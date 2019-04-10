@@ -1,4 +1,4 @@
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 # from netCDF4 import Dataset
 import numpy as np
 # from scipy.ndimage.filters import uniform_filter
@@ -9,9 +9,15 @@ import os
 import time
 import json
 import sys
+from snappy import Product
+from snappy import ProductData
+from snappy import ProductIO
+from snappy import ProductUtils
+from snappy import FlagCoding
+from snappy import jpy
 
 
-def get_band_or_tiePointGrid(product, name, dtype='float32'):
+def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
 	##
 	# This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
 	# The fuction returns a numpy array of shape (height, width)
@@ -26,10 +32,14 @@ def get_band_or_tiePointGrid(product, name, dtype='float32'):
 		product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
 	else:
 		raise Exception('{}: neither a band nor a tie point grid'.format(name))
-	return var.reshape((height, width))
+
+	if reshape:
+		var = var.reshape((height, width))
+
+	return var
 
 
-def read_metadata(nnpath):
+def read_NN_metadata(nnpath):
 	##
 	# read the metadata:
 	# nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
@@ -47,13 +57,30 @@ def read_metadata(nnpath):
 	return training_meta, model_meta
 
 
-def radianceToReflectance_Reader(product, sensor = ''):
+def radianceToReflectance_Reader(product, sensor = '', print_info=False):
+
+	if print_info:
+		height = product.getSceneRasterHeight()
+		width = product.getSceneRasterWidth()
+		name = product.getName()
+		description = product.getDescription()
+		band_names = product.getBandNames()
+
+		print("Sensor:      %s" % sensor)
+		print("Product:     %s, %s" % (name, description))
+		print("Raster size: %d x %d pixels" % (width, height))
+		print("Start time:  " + str(product.getStartTime()))
+		print("End time:    " + str(product.getEndTime()))
+		print("Bands:       %s" % (list(band_names)))
+
 
 	if sensor == 'OLCI':
 		rad = Level1_Reader(product, sensor, band_group='radiance')
 		solar_flux = Level1_Reader(product, sensor, band_group='solar_flux')
-		SZA = get_band_or_tiePointGrid(product, 'SZA')
-		refl = rad * np.pi / (solar_flux * np.cos(SZA*np.pi/180.))
+		SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
+		refl = np.zeros(rad.shape)
+		for j in range(rad.shape[1]):
+			refl[:, j] = rad[:, j] * np.pi / (solar_flux[:, j] * np.cos(SZA*np.pi/180.))
 	elif sensor == 'S2':
 		refl = Level1_Reader(product, sensor)
 
@@ -71,15 +98,16 @@ def Level1_Reader(product, sensor, band_group='radiance'):
 					   "Oa11_radiance", "Oa12_radiance", "Oa13_radiance", "Oa14_radiance", "Oa15_radiance",
 					   "Oa16_radiance", "Oa17_radiance", "Oa18_radiance", "Oa19_radiance", "Oa20_radiance", "Oa21_radiance"]
 		elif band_group == 'solar_flux':
-			input_label = ["solar_flux_band" + str(i+1) for i in range(21)]
+			input_label = ["solar_flux_band_" + str(i+1) for i in range(21)]
 
 	# Initialise and read all bands contained in input_label into variable X
-	# X is re-organised to serve as valid input to the neural net
+	# X is re-organised to serve as valid input to the neural net. Each row contains one spectrum.
 	band = get_band_or_tiePointGrid(product, input_label[0])
 	X = np.zeros((band.shape[0] * band.shape[1], len(input_label)))
 	print(X.shape)
 	X[:, 0] = band.reshape((X.shape[0],))
 	for i, bn in enumerate(input_label[1:]):
+		#print(bn)
 		band = get_band_or_tiePointGrid(product, bn)
 		X[:, i + 1] = band.reshape((X.shape[0],))
 
@@ -99,8 +127,8 @@ def check_valid_pixel_expression_L1(product, sensor):
 		## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
 		invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
 		land_mask = (np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31) | \
-					(np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30) | \
-					(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
+					(np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30)
+					#(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
 		bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
 
 		invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
@@ -122,7 +150,7 @@ def apply_forwardNN_IOP_to_rhow_keras(X, sensor):
 	NN_path = '...'  # full path to NN file.
 	metaNN_path = '...'  # folder with metadata files from training
 	model = load_model(NN_path)
-	training_meta, model_meta = read_metadata(metaNN_path)
+	training_meta, model_meta = read_NN_metadata(metaNN_path)
 
 	X_trans = np.copy(X)
 	###
@@ -156,7 +184,6 @@ def apply_forwardNN_IOP_to_rhow(iop, sensor):
 	# will only give MERIS bands! (11 bands)
 
 	return np.ones(11)*0.03
-
 
 
 def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
@@ -201,26 +228,104 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	# Writing a product
 	###
 
+	width = product.getSceneRasterWidth()
+	height = product.getSceneRasterHeight()
+	bandShape = (height, width)
+
+	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
+	# writer = ProductIO.getProductWriter('BEAM-DIMAP')
+	# balticPACProduct.setProductWriter(writer)
+
+	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
+	ProductUtils.copyTiePointGrids(product, balticPACProduct)
+
+	if (sensor == 'OLCI'):
+		nbands = 21
+		band_name = ["Oa01_radiance"]
+		for i in range(1, nbands):
+			if (i < 9):
+				band_name += ["Oa0" + str(i + 1) + "_radiance"]
+			else:
+				band_name += ["Oa" + str(i + 1) + "_radiance"]
+
+	# Create rhow, rhown, uncertainties for rhow, angles
+	for i in range(nbands):
+		bsource = product.getBand(band_name[i]) # TOA radiance
+
+		brtoa_name = "rtoa_" + str(i + 1)
+		rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
+		ProductUtils.copySpectralBandProperties(bsource, rtoaBand)
+		rtoaBand.setNoDataValue(np.nan)
+		rtoaBand.setNoDataValueUsed(True)
+		out = np.array(refl[:, i]).reshape(bandShape)
+		#plt.imshow(out)
+		#plt.show()
+		rtoaBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		#targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
+
+		brhow_name = "rhow_" + str(i + 1)
+		rhowBand = balticPACProduct.addBand(brhow_name, ProductData.TYPE_FLOAT32)
+		ProductUtils.copySpectralBandProperties(bsource, rhowBand)
+		rhowBand.setNoDataValue(np.nan)
+		rhowBand.setNoDataValueUsed(True)
+		# out = np.array(prediction[:, i]).reshape(bandShape)
+		# rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		#
+		brhown_name = "rhown_" + str(i + 1)
+		rhownBand = balticPACProduct.addBand(brhown_name, ProductData.TYPE_FLOAT32)
+		ProductUtils.copySpectralBandProperties(bsource, rhownBand)
+		rhownBand.setNoDataValue(np.nan)
+		rhownBand.setNoDataValueUsed(True)
+		# out = np.array(prediction[:, i]).reshape(bandShape)
+		# rhownBand.setData(snp.ProductData.createInstance(np.float32(out)))
+
+		bunc_rhow_name = "unc_rhow_" + str(i + 1)
+		unc_rhowBand = balticPACProduct.addBand(bunc_rhow_name, ProductData.TYPE_FLOAT32)
+		ProductUtils.copySpectralBandProperties(bsource, unc_rhowBand)
+		unc_rhowBand.setNoDataValue(np.nan)
+		unc_rhowBand.setNoDataValueUsed(True)
+		# out = np.array(prediction[:, i]).reshape(bandShape)
+		# unc_rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
+
+	balticPACProduct.setAutoGrouping('rtoa:rhow:rhown:unc_rhow')
+
+	# # Create flag coding
+	# raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
+	# raycorFlagCoding = FlagCoding('raycor_flags')
+	# raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
+	# raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
+	# group = balticPACProduct.getFlagCodingGroup()
+	# group.add(raycorFlagCoding)
+	# raycorFlagsBand.setSampleCoding(raycorFlagCoding)
+
+	# add geocoding and create the product on disk (meta data, empty bands)
+
+	# balticPACProduct.writeHeader(outpath + 'baltic_' + filename)
+	snp.ProductIO.writeProduct(balticPACProduct, outpath + 'baltic_' + filename, 'BEAM-DIMAP')
+
+
+
 
 	###
 	# Adding new bands to the product and writing a new product as output.
-	if len(prediction.shape) > 1:
-		print(prediction.shape)
-		for i in range(prediction.shape[1]):
-			# targetBand = product.addBand('nn_value_'+str(i)+'_'+modelN, snp.ProductData.TYPE_FLOAT32)
-			targetBand = product.addBand(training_meta['output_label'][i], snp.ProductData.TYPE_FLOAT32)
-			targetBand.setNoDataValue(np.nan)
-			targetBand.setNoDataValueUsed(True)
-			out = np.array(prediction[:, i]).reshape(band.shape)
-			targetBand.setData(snp.ProductData.createInstance(np.float32(out)))
-	elif len(prediction.shape) == 1:
-		targetBand = product.addBand(training_meta['output_label'][0], snp.ProductData.TYPE_FLOAT32)
-		targetBand.setNoDataValue(np.nan)
-		targetBand.setNoDataValueUsed(True)
-		targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
-
-	snp.ProductIO.writeProduct(product, outpath + filename[:-4] + '_NNTest.dim', 'BEAM-DIMAP')
+	# if len(prediction.shape) > 1:
+	# 	print(prediction.shape)
+	# 	for i in range(prediction.shape[1]):
+	# 		# targetBand = product.addBand('nn_value_'+str(i)+'_'+modelN, snp.ProductData.TYPE_FLOAT32)
+	# 		targetBand = product.addBand(training_meta['output_label'][i], snp.ProductData.TYPE_FLOAT32)
+	# 		targetBand.setNoDataValue(np.nan)
+	# 		targetBand.setNoDataValueUsed(True)
+	# 		out = np.array(prediction[:, i]).reshape(band.shape)
+	# 		targetBand.setData(snp.ProductData.createInstance(np.float32(out)))
+	# elif len(prediction.shape) == 1:
+	# 	targetBand = product.addBand(training_meta['output_label'][0], snp.ProductData.TYPE_FLOAT32)
+	# 	targetBand.setNoDataValue(np.nan)
+	# 	targetBand.setNoDataValueUsed(True)
+	# 	targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
+	#
+	# snp.ProductIO.writeProduct(product, outpath + filename[:-4] + '_NNTest.dim', 'BEAM-DIMAP')
 	product.closeProductReader()
+	balticPACProduct.closeIO()
 
 
 def main(args=sys.argv[1:]):
@@ -229,16 +334,16 @@ def main(args=sys.argv[1:]):
 		sys.exit(1)
 	sensor = args[0]
 
-	outpath = ''
-
-	path = "E:\Documents\projects\IdePix\data\S3_NN_test\L1_reproc_O2harm\\"
+	outpath = 'E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\'
+	current_path = os.path.dirname(__file__)
+	path = current_path + '\\test_data\\'
 
 	fnames = os.listdir(path)
-	fnames = [fn for fn in fnames if 'homogenIdepix.dim' in fn]  # OLCI
+	fnames = [fn for fn in fnames if '.dim' in fn]  # OLCI
 
 	print(len(fnames))
 
-	for fn in fnames[:5]:
+	for fn in fnames[:1]:
 		print(fn)
 		apply_NN_to_scene(scene_path=path, filename=fn, outpath=outpath, sensor=sensor)
 
