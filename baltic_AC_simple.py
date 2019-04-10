@@ -42,7 +42,7 @@ def read_metadata(nnpath):
 	return training_meta, model_meta
 
 
-def apply_NN_to_scene(scene_path='', filename='', outpath='', NNpath='', sensor=''):
+def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 
 	###
 	# Initialising a product for Reading with snappy
@@ -125,3 +125,18 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', NNpath='', sensor=
 
 	snp.ProductIO.writeProduct(product, outpath + filename[:-4] + '_NNTest.dim', 'BEAM-DIMAP')
 	product.closeProductReader()
+
+
+outpath = ''
+
+path = "E:\Documents\projects\IdePix\data\S3_NN_test\L1_reproc_O2harm\\"
+
+fnames = os.listdir(path)
+fnames = [fn for fn in fnames if 'homogenIdepix.dim' in fn]  # OLCI
+
+print(len(fnames))
+
+for fn in fnames[:5]:
+	print(fn)
+	apply_NN_to_scene(scene_path=path, filename=fn, outpath=outpath, sensor='OLCI')
+	# apply_NN_to_scene_multipleNN(scene_path=path, filename=fn, outpath=outpath, NNpath=nnpath, sensor='S2')
