@@ -8,9 +8,10 @@ import snappy as snp
 import os
 import time
 import json
+import sys
 
 
-def get_var(product, name, dtype='float32'):
+def get_band_or_tiePointGrid(product, name, dtype='float32'):
 	##
 	# This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
 	# The fuction returns a numpy array of shape (height, width)
@@ -46,37 +47,76 @@ def read_metadata(nnpath):
 	return training_meta, model_meta
 
 
-def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
-	###
-	# Initialising a product for Reading with snappy
-	##
-	product = snp.ProductIO.readProduct(scene_path + filename)
+def radianceToReflectance_Reader(product, sensor = ''):
 
+	if sensor == 'OLCI':
+		rad = Level1_Reader(product, sensor, band_group='radiance')
+		solar_flux = Level1_Reader(product, sensor, band_group='solar_flux')
+		SZA = get_band_or_tiePointGrid(product, 'SZA')
+		refl = rad * np.pi / (solar_flux * np.cos(SZA*np.pi/180.))
+	elif sensor == 'S2':
+		refl = Level1_Reader(product, sensor)
+
+	return refl
+
+
+def Level1_Reader(product, sensor, band_group='radiance'):
 	input_label = []
 	if sensor == 'S2':
 		input_label = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
 	elif sensor == 'OLCI':
-		input_label = ["Oa01_reflectance", "Oa02_reflectance", "Oa03_reflectance", "Oa04_reflectance",
-					   "Oa05_reflectance",
-					   "Oa06_reflectance", "Oa07_reflectance", "Oa08_reflectance", "Oa09_reflectance",
-					   "Oa10_reflectance",
-					   "Oa11_reflectance", "Oa12_reflectance", "Oa13_reflectance", "Oa14_reflectance",
-					   "Oa15_reflectance",
-					   "Oa16_reflectance", "Oa17_reflectance", "Oa18_reflectance", "Oa19_reflectance",
-					   "Oa20_reflectance", "Oa21_reflectance"]
+		if band_group == 'radiance':
+			input_label = ["Oa01_radiance", "Oa02_radiance", "Oa03_radiance", "Oa04_radiance", "Oa05_radiance",
+					   "Oa06_radiance", "Oa07_radiance", "Oa08_radiance", "Oa09_radiance", "Oa10_radiance",
+					   "Oa11_radiance", "Oa12_radiance", "Oa13_radiance", "Oa14_radiance", "Oa15_radiance",
+					   "Oa16_radiance", "Oa17_radiance", "Oa18_radiance", "Oa19_radiance", "Oa20_radiance", "Oa21_radiance"]
+		elif band_group == 'solar_flux':
+			input_label = ["solar_flux_band" + str(i+1) for i in range(21)]
 
 	# Initialise and read all bands contained in input_label into variable X
 	# X is re-organised to serve as valid input to the neural net
-	band = get_var(product, input_label[0])
+	band = get_band_or_tiePointGrid(product, input_label[0])
 	X = np.zeros((band.shape[0] * band.shape[1], len(input_label)))
 	print(X.shape)
 	X[:, 0] = band.reshape((X.shape[0],))
 	for i, bn in enumerate(input_label[1:]):
-		band = get_var(product, bn)
+		band = get_band_or_tiePointGrid(product, bn)
 		X[:, i + 1] = band.reshape((X.shape[0],))
 
-	start_time = time.time()
+	return X
 
+
+def check_valid_pixel_expression_L1(product, sensor):
+	if sensor == 'OLCI':
+		height = product.getSceneRasterHeight()
+		width = product.getSceneRasterWidth()
+		quality_flags = np.zeros(width * height, dtype='uint32')
+		product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
+		#quality_flags = quality_flags.reshape((height, width))
+
+		# Masks OLCI L1
+		## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
+		## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
+		invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
+		land_mask = (np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31) | \
+					(np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30) | \
+					(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
+		bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
+
+		invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
+		valid_pixel_flag = np.logical_not(invalid_mask)
+
+	elif sensor == 'S2':
+		#todo: set valid pixel expression L1C S2
+		height = product.getSceneRasterHeight()
+		width = product.getSceneRasterWidth()
+		valid_pixel_flag = np.ones(width * height, dtype='uint32')
+
+	return valid_pixel_flag
+
+
+def apply_forwardNN_IOP_to_rhow_keras(X, sensor):
+	start_time = time.time()
 	###
 	# read keras NN + metadata
 	NN_path = '...'  # full path to NN file.
@@ -108,6 +148,59 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	print(len(prediction.shape))
 
 	print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
+	return prediction
+
+
+def apply_forwardNN_IOP_to_rhow(iop, sensor):
+	#todo: use existing forward NN from c2rcc and derive rhow from iops.
+	# will only give MERIS bands! (11 bands)
+
+	return np.ones(11)*0.03
+
+
+
+def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
+	###
+	# Initialising a product for Reading with snappy
+	##
+	product = snp.ProductIO.readProduct(scene_path + filename)
+
+	###
+	# Read L1B product and convert Radiance to reflectance (if necessary).
+	# returns: numpy array with shape(pixels, wavelength).
+	###
+	refl = radianceToReflectance_Reader(product, sensor=sensor)
+
+
+
+	###
+	# classification of pixels
+	# returns: boolean array (pixels).
+	###
+	valid_L1 = check_valid_pixel_expression_L1(product, sensor)
+
+
+	###
+	# IOP to rhow
+	# todo: which is the specific order for NN input ?
+	# at the moment just fixed value, single pixel spectrum shape(11)
+	# todo input: numpy array (pixels, iops) ?? or single pixel?
+	# todo returns: numpy array (pixels, wavelength) ?? or single pixel spectrum?
+	###
+	iop = 0.
+	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sensor)
+
+
+	###
+	# todo Normalisation
+	###
+
+
+
+	###
+	# Writing a product
+	###
+
 
 	###
 	# Adding new bands to the product and writing a new product as output.
