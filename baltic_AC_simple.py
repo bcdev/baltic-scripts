@@ -1,7 +1,7 @@
-import matplotlib.pyplot as plt
-from netCDF4 import Dataset
+# import matplotlib.pyplot as plt
+# from netCDF4 import Dataset
 import numpy as np
-from scipy.ndimage.filters import uniform_filter
+# from scipy.ndimage.filters import uniform_filter
 from keras.models import load_model
 import pandas as pd
 import snappy as snp
@@ -11,6 +11,10 @@ import json
 
 
 def get_var(product, name, dtype='float32'):
+	##
+	# This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
+	# The fuction returns a numpy array of shape (height, width)
+	##
 	height = product.getSceneRasterHeight()
 	width = product.getSceneRasterWidth()
 	# print(height, width)
@@ -27,11 +31,11 @@ def get_var(product, name, dtype='float32'):
 def read_metadata(nnpath):
 	##
 	# read the metadata:
-	#nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
+	# nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
 	meta_fnames = os.listdir(nnpath)
 	meta_fn = [fn for fn in meta_fnames if 'Metadata_' in fn]
 	with open(nnpath + meta_fn[0], "r") as f:
-		 d = f.read()
+		d = f.read()
 	training_meta = json.loads(d)
 	f.close()
 	model_fn = [fn for fn in meta_fnames if 'MetadataModel_' in fn]
@@ -43,9 +47,9 @@ def read_metadata(nnpath):
 
 
 def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
-
 	###
 	# Initialising a product for Reading with snappy
+	##
 	product = snp.ProductIO.readProduct(scene_path + filename)
 
 	input_label = []
@@ -61,7 +65,8 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 					   "Oa16_reflectance", "Oa17_reflectance", "Oa18_reflectance", "Oa19_reflectance",
 					   "Oa20_reflectance", "Oa21_reflectance"]
 
-	# Initialise and read product to X
+	# Initialise and read all bands contained in input_label into variable X
+	# X is re-organised to serve as valid input to the neural net
 	band = get_var(product, input_label[0])
 	X = np.zeros((band.shape[0] * band.shape[1], len(input_label)))
 	print(X.shape)
@@ -70,13 +75,12 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 		band = get_var(product, bn)
 		X[:, i + 1] = band.reshape((X.shape[0],))
 
-
 	start_time = time.time()
 
 	###
 	# read keras NN + metadata
-	NN_path = '...' # full path to NN file.
-	metaNN_path = '...' # folder with metadata files from training
+	NN_path = '...'  # full path to NN file.
+	metaNN_path = '...'  # folder with metadata files from training
 	model = load_model(NN_path)
 	training_meta, model_meta = read_metadata(metaNN_path)
 
@@ -105,7 +109,6 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 
 	print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
 
-
 	###
 	# Adding new bands to the product and writing a new product as output.
 	if len(prediction.shape) > 1:
@@ -127,16 +130,25 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	product.closeProductReader()
 
 
-outpath = ''
+def main(args=sys.argv[1:]):
+	if len(args) != 1:
+		print("usage: baltic_AC_simple <SENSOR>")
+		sys.exit(1)
+	sensor = args[0]
 
-path = "E:\Documents\projects\IdePix\data\S3_NN_test\L1_reproc_O2harm\\"
+	outpath = ''
 
-fnames = os.listdir(path)
-fnames = [fn for fn in fnames if 'homogenIdepix.dim' in fn]  # OLCI
+	path = "E:\Documents\projects\IdePix\data\S3_NN_test\L1_reproc_O2harm\\"
 
-print(len(fnames))
+	fnames = os.listdir(path)
+	fnames = [fn for fn in fnames if 'homogenIdepix.dim' in fn]  # OLCI
 
-for fn in fnames[:5]:
-	print(fn)
-	apply_NN_to_scene(scene_path=path, filename=fn, outpath=outpath, sensor='OLCI')
-	# apply_NN_to_scene_multipleNN(scene_path=path, filename=fn, outpath=outpath, NNpath=nnpath, sensor='S2')
+	print(len(fnames))
+
+	for fn in fnames[:5]:
+		print(fn)
+		apply_NN_to_scene(scene_path=path, filename=fn, outpath=outpath, sensor=sensor)
+
+
+if __name__ == '__main__':
+	main()
