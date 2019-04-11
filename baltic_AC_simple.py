@@ -233,9 +233,9 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	height = product.getSceneRasterHeight()
 	bandShape = (height, width)
 
+	baltic__product_path = outpath + 'baltic_' + filename
 	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-	writer = ProductIO.getProductWriter('BEAM-DIMAP')
-	balticPACProduct.setProductWriter(writer)
+	balticPACProduct.setFileLocation(baltic__product_path)
 
 	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
 	ProductUtils.copyTiePointGrids(product, balticPACProduct)
@@ -289,6 +289,50 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 		# out = np.array(prediction[:, i]).reshape(bandShape)
 		# unc_rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
 
+	writer = ProductIO.getProductWriter('BEAM-DIMAP')
+	balticPACProduct.setProductWriter(writer)
+
+	balticPACProduct.writeHeader(baltic__product_path)
+
+	# set datarhow, rhown, uncertainties for rhow, angles
+	for i in range(nbands):
+		bsource = product.getBand(band_name[i]) # TOA radiance
+
+		brtoa_name = "rtoa_" + str(i + 1)
+		rtoaBand = balticPACProduct.getBand(brtoa_name)
+		out = np.array(refl[:, i]).reshape(bandShape)
+		#plt.imshow(out)
+		#plt.show()
+		# rtoaBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		#targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
+		rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)), ProgressMonitor.NULL)
+
+		######
+		#need to be adapted
+		# brhow_name = "rhow_" + str(i + 1)
+		# rhowBand = balticPACProduct.addBand(brhow_name, ProductData.TYPE_FLOAT32)
+		# ProductUtils.copySpectralBandProperties(bsource, rhowBand)
+		# rhowBand.setNoDataValue(np.nan)
+		# rhowBand.setNoDataValueUsed(True)
+		# # out = np.array(prediction[:, i]).reshape(bandShape)
+		# # rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		# #
+		# brhown_name = "rhown_" + str(i + 1)
+		# rhownBand = balticPACProduct.addBand(brhown_name, ProductData.TYPE_FLOAT32)
+		# ProductUtils.copySpectralBandProperties(bsource, rhownBand)
+		# rhownBand.setNoDataValue(np.nan)
+		# rhownBand.setNoDataValueUsed(True)
+		# # out = np.array(prediction[:, i]).reshape(bandShape)
+		# # rhownBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		#
+		# bunc_rhow_name = "unc_rhow_" + str(i + 1)
+		# unc_rhowBand = balticPACProduct.addBand(bunc_rhow_name, ProductData.TYPE_FLOAT32)
+		# ProductUtils.copySpectralBandProperties(bsource, unc_rhowBand)
+		# unc_rhowBand.setNoDataValue(np.nan)
+		# unc_rhowBand.setNoDataValueUsed(True)
+		# # out = np.array(prediction[:, i]).reshape(bandShape)
+		# # unc_rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
+
 	balticPACProduct.setAutoGrouping('rtoa:rhow:rhown:unc_rhow')
 
 	# # Create flag coding
@@ -302,8 +346,11 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 
 	# add geocoding and create the product on disk (meta data, empty bands)
 
-	balticPACProduct.writeHeader(outpath + 'baltic_' + filename)
-	snp.ProductIO.writeProduct(balticPACProduct, outpath + 'baltic_' + filename, 'BEAM-DIMAP')
+	writer = ProductIO.getProductWriter('BEAM-DIMAP')
+	balticPACProduct.setProductWriter(writer)
+
+	balticPACProduct.writeHeader(baltic__product_path)
+	# snp.ProductIO.writeProduct(balticPACProduct, baltic__product_path, 'BEAM-DIMAP')
 
 
 
