@@ -182,9 +182,153 @@ def apply_forwardNN_IOP_to_rhow_keras(X, sensor):
 
 def apply_forwardNN_IOP_to_rhow(iop, sensor):
 	#todo: use existing forward NN from c2rcc and derive rhow from iops.
-	# will only give MERIS bands! (11 bands)
+	# NN inputs (10): SZA, VZA, diffAzi, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	# NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
 
-	return np.ones(11)*0.03
+	# return: should probably be an array of shape (pixels, wavelengths) ??
+
+	nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/17x97x47_464.3.net"
+
+	#nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/47x37x27_443.0.net"
+	NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
+	nnfile = open(nnFilePath, 'r')
+	nnCode = nnfile.read()
+	nn_iop_rw = NNffbpAlphaTabFast(nnCode)
+
+	####
+	# is functioning - > reading of NN file is correct.
+	###
+	# mi = np.array(nn_iop_rw.getOutmin())
+	# print(mi)
+	#
+	# mi = np.array(nn_iop_rw.getInmin())
+	# ma = np.array(nn_iop_rw.getInmax())
+	# print(mi)
+	# print(ma)
+
+	#
+	# #// (9.5.4)
+	# #check if log_IOPs out of range
+	# mi = nn_rw_iop.get().getOutmin();
+	# ma = nn_rw_iop.get().getOutmax();
+	# boolean iop_oor_flag = false;
+	# for (int iv = 0; iv < log_iops_nn1.length; iv++) {
+	# 	if (log_iops_nn1[iv] < mi[iv] | log_iops_nn1[iv] > ma[iv]) {
+	# 		iop_oor_flag = true;
+	# 	}
+	# }
+	# flags = BitSetter.setFlag(flags, FLAG_INDEX_IOP_OOR, iop_oor_flag);
+	#
+	# #// (9.5.5)
+	# # check if log_IOPs	at limit
+	# int firstIopMaxFlagIndex = FLAG_INDEX_APIG_AT_MAX;
+	# for (int i = 0; i < log_iops_nn1.length; i++) {
+	# 	final boolean iopAtMax = log_iops_nn1[i] > (ma[i] - log_threshfak_oor);
+	# 	flags = BitSetter.setFlag(flags, i + firstIopMaxFlagIndex, iopAtMax);
+	# }
+	#
+	# int	firstIopMinFlagIndex = FLAG_INDEX_APIG_AT_MIN;
+	# for (int i = 0; i < log_iops_nn1.length; i++) {
+	# 	final boolean iopAtMin = log_iops_nn1[i] < (mi[i] + log_threshfak_oor);
+	# 	flags = BitSetter.setFlag(flags, i + firstIopMinFlagIndex, iopAtMin);
+	# }
+	#
+	#
+
+	###
+	# SZA, VZA, diffAzimuthA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	Double = jpy.get_type('java.lang.Double')
+	#nn_in_for = np.array((30., 30., 120., 15., 25., 0., -1., -1., -1., -3.)) # caution: dtype=np.float32 leads to errror in next line.
+	#log_rw_nn2 = np.array(nn_iop_rw.calc(nn_in_for), dtype=np.float32)
+	#print(log_rw_nn2)
+
+	#double_nn_in_for = np.array((Double(45.), Double(30.), Double(120.), Double(15.), Double(25.),
+	#							 Double(-2.), Double(-2.), Double(-2.), Double(-2.), Double(-3.)))
+	#log_rw_nn2 = np.array(nn_iop_rw.calc(double_nn_in_for), dtype=np.float32)
+
+#Name	X	Y	Lon	Lat							log_adet	log_agelb	log_apig	log_bpart	log_bwit	rhow_1	rhow_2	rhow_3	rhow_4	rhow_5	rhow_6	rhow_7	rhow_8	rhow_9	rhow_10	rhow_11	rhow_12	OAA	OZA	SAA	SZA
+#pin_1	437.5	235.5	3.825742	56.397962	-4.956355	-3.7658699	-4.3414865	-1.8608053	-2.6944041	0.009959362	0.01134242	0.014025537	0.01487543	0.010059207	0.005442682	0.0010344568	5.945379E-4	5.734044E-4	5.45633E-4	2.7334824E-4	7.638413E-5	106.33723	8.41573	155.42921	51.091805
+#pin_2	315.5	189.5	3.369955	56.597397	-5.088239	-4.04009	-4.5042415	-1.5932024	-3.473691	0.013867372	0.015864057	0.019084657	0.019100675	0.01233714	0.006331922	0.0011564749	6.558736E-4	6.272484E-4	5.924552E-4	2.9530638E-4	8.18309E-5	105.94441	10.97436	154.92598	51.3791
+#pin_3	261.5	291.5	3.013032	56.374021	-3.9385555	-3.2776499	-3.4899228	-1.7674016	-0.70727175	0.0077605355	0.008688468	0.010997476	0.014358465	0.012292771	0.009077219	0.0021156792	0.0012308386	0.0011759225	0.0011434247	6.446244E-4	1.8506091E-4	105.67807	12.095442	154.42883	51.258068
+#pin_4	581.5	90.5	4.624798	56.662986	-5.0377655	-3.6873133	-4.332324	-2.0587044	-2.844635	0.008768552	0.009983219	0.012415685	0.013173553	0.008856366	0.004725398	9.098557E-4	5.228566E-4	5.064532E-4	4.8198106E-4	2.3771799E-4	6.621309E-5	106.967384	5.360547	156.48013	51.16074
+
+	lam = np.array((400.0, 412.5, 442.5, 490.0, 510.0, 560.0, 620.0, 665.0, 673.75, 681.25, 708.75, 753.75))
+
+	double_nn_in_for = np.array((Double(51.091805), Double(8.41573), Double(155.42921- 106.33723), Double(15.), Double(30.),
+								 Double(-4.3414865), Double(-4.956355), Double(-3.7658699), Double(-1.8608053), Double(-2.6944041)))
+	log_rw_nn2 = np.array(nn_iop_rw.calc(double_nn_in_for), dtype=np.float32) # returns always the same numbers!!
+
+	print((log_rw_nn2))
+	print(np.exp(log_rw_nn2))
+
+	return np.ones(10)*0.03
+
+
+def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
+	File = jpy.get_type('java.io.File')
+	width = product.getSceneRasterWidth()
+	height = product.getSceneRasterHeight()
+	bandShape = (height, width)
+
+	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
+	balticPACProduct.setFileLocation(File(baltic__product_path))
+
+	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
+	ProductUtils.copyTiePointGrids(product, balticPACProduct)
+
+	if (sensor == 'OLCI'):
+		nbands = 21
+		band_name = ["Oa01_radiance"]
+		for i in range(1, nbands):
+			if (i < 9):
+				band_name += ["Oa0" + str(i + 1) + "_radiance"]
+			else:
+				band_name += ["Oa" + str(i + 1) + "_radiance"]
+
+	# Create empty bands for rhow, rhown, uncertainties for rhow
+	for i in range(nbands):
+		bsource = product.getBand(band_name[i])  # TOA radiance
+
+		for key in data_dict.keys():
+			brtoa_name = key + "_" + str(i + 1)
+			rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
+			ProductUtils.copySpectralBandProperties(bsource, rtoaBand)
+			rtoaBand.setNoDataValue(np.nan)
+			rtoaBand.setNoDataValueUsed(True)
+
+
+	dataNames = [*data_dict.keys()]
+	autoGroupingString = dataNames[0]
+	for key in dataNames[1:]:
+		autoGroupingString += ':' + key
+	balticPACProduct.setAutoGrouping(autoGroupingString)
+
+	writer = ProductIO.getProductWriter('BEAM-DIMAP')
+	balticPACProduct.setProductWriter(writer)
+	balticPACProduct.writeHeader(baltic__product_path)
+
+	# set datarhow, rhown, uncertainties for rhow
+	for key in data_dict.keys():
+		x = data_dict[key].get('data')
+		if not x is None:
+			for i in range(nbands):
+				brtoa_name = key + "_" + str(i + 1)
+				rtoaBand = balticPACProduct.getBand(brtoa_name)
+				out = np.array(x[:, i]).reshape(bandShape)
+				rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+										 ProgressMonitor.NULL)
+
+
+	# # Create flag coding
+	# raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
+	# raycorFlagCoding = FlagCoding('raycor_flags')
+	# raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
+	# raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
+	# group = balticPACProduct.getFlagCodingGroup()
+	# group.add(raycorFlagCoding)
+	# raycorFlagsBand.setSampleCoding(raycorFlagCoding)
+
+	balticPACProduct.closeIO()
 
 
 def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
@@ -210,8 +354,7 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 
 	###
 	# IOP to rhow
-	# todo: which is the specific order for NN input ?
-	# at the moment just fixed value, single pixel spectrum shape(11)
+	# at the moment just fixed value, single pixel spectrum shape(12)
 	# todo input: numpy array (pixels, iops) ?? or single pixel?
 	# todo returns: numpy array (pixels, wavelength) ?? or single pixel spectrum?
 	###
@@ -224,110 +367,29 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	###
 
 
-
 	###
 	# Writing a product
+	# input: data_dict holds the band
 	###
+	baltic__product_path = outpath + 'baltic_' + filename
+	data_dict = {
+		'rtoa':{
+			'data': refl
+		},
+		'rhow':{
+			'data': None
+		},
+		'rhown': {
+			'data': None
+		},
+		'unc_rhow': {
+			'data': None
+		}
+	}
 
-	width = product.getSceneRasterWidth()
-	height = product.getSceneRasterHeight()
-	bandShape = (height, width)
+	write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict)
 
-	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-	writer = ProductIO.getProductWriter('BEAM-DIMAP')
-	balticPACProduct.setProductWriter(writer)
-
-	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
-	ProductUtils.copyTiePointGrids(product, balticPACProduct)
-
-	if (sensor == 'OLCI'):
-		nbands = 21
-		band_name = ["Oa01_radiance"]
-		for i in range(1, nbands):
-			if (i < 9):
-				band_name += ["Oa0" + str(i + 1) + "_radiance"]
-			else:
-				band_name += ["Oa" + str(i + 1) + "_radiance"]
-
-	# Create rhow, rhown, uncertainties for rhow, angles
-	for i in range(nbands):
-		bsource = product.getBand(band_name[i]) # TOA radiance
-
-		brtoa_name = "rtoa_" + str(i + 1)
-		rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
-		ProductUtils.copySpectralBandProperties(bsource, rtoaBand)
-		rtoaBand.setNoDataValue(np.nan)
-		rtoaBand.setNoDataValueUsed(True)
-		out = np.array(refl[:, i]).reshape(bandShape)
-		#plt.imshow(out)
-		#plt.show()
-		# rtoaBand.setData(snp.ProductData.createInstance(np.float32(out)))
-		#targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
-		rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)), ProgressMonitor.NULL)
-
-		brhow_name = "rhow_" + str(i + 1)
-		rhowBand = balticPACProduct.addBand(brhow_name, ProductData.TYPE_FLOAT32)
-		ProductUtils.copySpectralBandProperties(bsource, rhowBand)
-		rhowBand.setNoDataValue(np.nan)
-		rhowBand.setNoDataValueUsed(True)
-		# out = np.array(prediction[:, i]).reshape(bandShape)
-		# rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
-		#
-		brhown_name = "rhown_" + str(i + 1)
-		rhownBand = balticPACProduct.addBand(brhown_name, ProductData.TYPE_FLOAT32)
-		ProductUtils.copySpectralBandProperties(bsource, rhownBand)
-		rhownBand.setNoDataValue(np.nan)
-		rhownBand.setNoDataValueUsed(True)
-		# out = np.array(prediction[:, i]).reshape(bandShape)
-		# rhownBand.setData(snp.ProductData.createInstance(np.float32(out)))
-
-		bunc_rhow_name = "unc_rhow_" + str(i + 1)
-		unc_rhowBand = balticPACProduct.addBand(bunc_rhow_name, ProductData.TYPE_FLOAT32)
-		ProductUtils.copySpectralBandProperties(bsource, unc_rhowBand)
-		unc_rhowBand.setNoDataValue(np.nan)
-		unc_rhowBand.setNoDataValueUsed(True)
-		# out = np.array(prediction[:, i]).reshape(bandShape)
-		# unc_rhowBand.setData(snp.ProductData.createInstance(np.float32(out)))
-
-	balticPACProduct.setAutoGrouping('rtoa:rhow:rhown:unc_rhow')
-
-	# # Create flag coding
-	# raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
-	# raycorFlagCoding = FlagCoding('raycor_flags')
-	# raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
-	# raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
-	# group = balticPACProduct.getFlagCodingGroup()
-	# group.add(raycorFlagCoding)
-	# raycorFlagsBand.setSampleCoding(raycorFlagCoding)
-
-	# add geocoding and create the product on disk (meta data, empty bands)
-
-	balticPACProduct.writeHeader(outpath + 'baltic_' + filename)
-	snp.ProductIO.writeProduct(balticPACProduct, outpath + 'baltic_' + filename, 'BEAM-DIMAP')
-
-
-
-
-	###
-	# Adding new bands to the product and writing a new product as output.
-	# if len(prediction.shape) > 1:
-	# 	print(prediction.shape)
-	# 	for i in range(prediction.shape[1]):
-	# 		# targetBand = product.addBand('nn_value_'+str(i)+'_'+modelN, snp.ProductData.TYPE_FLOAT32)
-	# 		targetBand = product.addBand(training_meta['output_label'][i], snp.ProductData.TYPE_FLOAT32)
-	# 		targetBand.setNoDataValue(np.nan)
-	# 		targetBand.setNoDataValueUsed(True)
-	# 		out = np.array(prediction[:, i]).reshape(band.shape)
-	# 		targetBand.setData(snp.ProductData.createInstance(np.float32(out)))
-	# elif len(prediction.shape) == 1:
-	# 	targetBand = product.addBand(training_meta['output_label'][0], snp.ProductData.TYPE_FLOAT32)
-	# 	targetBand.setNoDataValue(np.nan)
-	# 	targetBand.setNoDataValueUsed(True)
-	# 	targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
-	#
-	# snp.ProductIO.writeProduct(product, outpath + filename[:-4] + '_NNTest.dim', 'BEAM-DIMAP')
 	product.closeProductReader()
-	balticPACProduct.closeIO()
 
 
 def main(args=sys.argv[1:]):
