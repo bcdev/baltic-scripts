@@ -13,6 +13,7 @@ from snappy import Product
 from snappy import ProductData
 from snappy import ProductIO
 from snappy import ProductUtils
+from snappy import ProgressMonitor
 from snappy import FlagCoding
 from snappy import jpy
 
@@ -233,8 +234,8 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	bandShape = (height, width)
 
 	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-	# writer = ProductIO.getProductWriter('BEAM-DIMAP')
-	# balticPACProduct.setProductWriter(writer)
+	writer = ProductIO.getProductWriter('BEAM-DIMAP')
+	balticPACProduct.setProductWriter(writer)
 
 	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
 	ProductUtils.copyTiePointGrids(product, balticPACProduct)
@@ -260,8 +261,9 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 		out = np.array(refl[:, i]).reshape(bandShape)
 		#plt.imshow(out)
 		#plt.show()
-		rtoaBand.setData(snp.ProductData.createInstance(np.float32(out)))
+		# rtoaBand.setData(snp.ProductData.createInstance(np.float32(out)))
 		#targetBand.setData(snp.ProductData.createInstance(np.float32(prediction.reshape(band.shape))))
+		rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)), ProgressMonitor.NULL)
 
 		brhow_name = "rhow_" + str(i + 1)
 		rhowBand = balticPACProduct.addBand(brhow_name, ProductData.TYPE_FLOAT32)
@@ -300,7 +302,7 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 
 	# add geocoding and create the product on disk (meta data, empty bands)
 
-	# balticPACProduct.writeHeader(outpath + 'baltic_' + filename)
+	balticPACProduct.writeHeader(outpath + 'baltic_' + filename)
 	snp.ProductIO.writeProduct(balticPACProduct, outpath + 'baltic_' + filename, 'BEAM-DIMAP')
 
 
