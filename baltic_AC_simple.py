@@ -180,37 +180,120 @@ def apply_forwardNN_IOP_to_rhow_keras(X, sensor):
 	return prediction
 
 
-def apply_forwardNN_IOP_to_rhow(iop, sensor):
-	#todo: use existing forward NN from c2rcc and derive rhow from iops.
+def apply_forwardNN_IOP_to_rhow_example():
 	# NN inputs (10): SZA, VZA, diffAzi, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
 	# NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
 
-	# return: should probably be an array of shape (pixels, wavelengths) ??
-
 	nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/17x97x47_464.3.net"
-
-	#nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/47x37x27_443.0.net"
 	NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
 	nnfile = open(nnFilePath, 'r')
 	nnCode = nnfile.read()
 	nn_iop_rw = NNffbpAlphaTabFast(nnCode)
 
-	####
-	# is functioning - > reading of NN file is correct.
 	###
-	# mi = np.array(nn_iop_rw.getOutmin())
-	# print(mi)
-	#
-	# mi = np.array(nn_iop_rw.getInmin())
-	# ma = np.array(nn_iop_rw.getInmax())
-	# print(mi)
-	# print(ma)
+	# IMPORTANT: initialise input as np.zeros in the correct length!!!
+	# SZA, VZA, diffAzimuthA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	a = np.zeros(10)
+	a[0] = 51.091805
+	a[1] = 8.41573
+	a[2] = 155.42921 - 106.33723
+	a[3] = 15.
+	a[4] = 35.
+	a[5] = -4.3414865
+	a[6] = -4.956355
+	a[7] = -3.7658699
+	a[8] = -1.8608053
+	a[9] = -2.6944041
+	log_rw_nn2 = np.array(nn_iop_rw.calc(a), dtype=np.float32)  # returns always the same numbers!!
 
-	#
+	print(np.exp(log_rw_nn2))
+	test_rhow_fromTOA = np.array((0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4, 5.734044E-4,
+	5.45633E-4, 2.7334824E-4, 7.638413E-5))
+
+	lam = np.array((400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754))
+
+	plt.plot(lam, test_rhow_fromTOA, 'c-')
+	plt.plot(lam, np.exp(log_rw_nn2), 'c--')
+	plt.show()
+
+
+# Name	X	Y	Lon	Lat							log_adet	log_agelb	log_apig	log_bpart	log_bwit	rhow_1	rhow_2	rhow_3	rhow_4	rhow_5	rhow_6	rhow_7	rhow_8	rhow_9	rhow_10	rhow_11	rhow_12	OAA	OZA	SAA	SZA
+	# pin_1	437.5	235.5	3.825742	56.397962	-4.956355	-3.7658699	-4.3414865	-1.8608053	-2.6944041	0.009959362	0.01134242	0.014025537	0.01487543	0.010059207	0.005442682	0.0010344568	5.945379E-4	5.734044E-4	5.45633E-4	2.7334824E-4	7.638413E-5	106.33723	8.41573	155.42921	51.091805
+	# pin_2	315.5	189.5	3.369955	56.597397	-5.088239	-4.04009	-4.5042415	-1.5932024	-3.473691	0.013867372	0.015864057	0.019084657	0.019100675	0.01233714	0.006331922	0.0011564749	6.558736E-4	6.272484E-4	5.924552E-4	2.9530638E-4	8.18309E-5	105.94441	10.97436	154.92598	51.3791
+	# pin_3	261.5	291.5	3.013032	56.374021	-3.9385555	-3.2776499	-3.4899228	-1.7674016	-0.70727175	0.0077605355	0.008688468	0.010997476	0.014358465	0.012292771	0.009077219	0.0021156792	0.0012308386	0.0011759225	0.0011434247	6.446244E-4	1.8506091E-4	105.67807	12.095442	154.42883	51.258068
+	# pin_4	581.5	90.5	4.624798	56.662986	-5.0377655	-3.6873133	-4.332324	-2.0587044	-2.844635	0.008768552	0.009983219	0.012415685	0.013173553	0.008856366	0.004725398	9.098557E-4	5.228566E-4	5.064532E-4	4.8198106E-4	2.3771799E-4	6.621309E-5	106.967384	5.360547	156.48013	51.16074
+
+
+def apply_forwardNN_IOP_to_rhow_arrayExample(sensor):
+	iop = np.zeros((2,5))
+	#log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	iop[0,:] = (-4.3414865, -4.956355, - 3.7658699 ,- 1.8608053, - 2.6944041)
+	iop[1,:] = ( -4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
+	sza = np.array((51.091805, 51.3791))
+	vza = np.array((8.41573, 10.97436))
+	diff_azim = np.array((155.42921-106.33723, 154.92598-105.94441))
+
+	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
+
+	test_rhow_fromTOA = np.zeros((2, 12))
+	test_rhow_fromTOA[0,:] = (0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4, 5.734044E-4, 5.45633E-4, 2.7334824E-4, 7.638413E-5)
+	test_rhow_fromTOA[1,:] = (0.013867372, 0.015864057, 0.019084657, 0.019100675, 0.01233714, 0.006331922, 0.0011564749, 6.558736E-4, 6.272484E-4, 5.924552E-4, 2.9530638E-4, 8.18309E-5)
+
+	lam = np.array((400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754))
+
+	mycol = np.array(('c', 'r'))
+
+	for i in range(rhow_mod.shape[0]):
+		plt.plot(lam, rhow_mod[i,:], '--', color=mycol[i])
+		plt.plot(lam, test_rhow_fromTOA[i, :], '-', color=mycol[i])
+
+	plt.show()
+
+
+def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, T=15, S=35):
+	# iop : pixels x (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)
+	# sun_zenith, view_zenith, diff_azimuth (0-180°) : pixels
+	# T, S: currently constant.
+	# valid ranges can be found at the beginning of the .net-file.
+
+	# NN inputs (10): SZA, VZA, diffAzi, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	# NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+	# return: should probably be an array of shape (pixels, wavelengths) ??
+
+	nBands = None
+	if sensor == 'OLCI':
+		nBands=12
+
+	output = np.zeros((iop.shape[0], nBands))
+
+	nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/17x97x47_464.3.net"
+	NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
+	nnfile = open(nnFilePath, 'r')
+	nnCode = nnfile.read()
+	nn_iop_rw = NNffbpAlphaTabFast(nnCode)
+
+	for i in range(iop.shape[0]):
+		###
+		# IMPORTANT: initialise input as np.zeros in the correct length!!! otherwise, the function will not work!
+		# SZA, VZA, diffAzimuthA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+		inputNN = np.zeros(10)
+		inputNN[0] = sun_zenith[i]
+		inputNN[1] = view_zenith[i]
+		inputNN[2] = diff_azimuth[i]
+		inputNN[3] = T
+		inputNN[4] = S
+		for j in range(iop.shape[1]): # log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+			inputNN[j+5] = iop[i, j]
+
+		log_rw_nn2 = np.array(nn_iop_rw.calc(inputNN), dtype=np.float32)  # returns always the same numbers!!
+
+		print(np.exp(log_rw_nn2))
+		output[i, :] = np.exp(log_rw_nn2)
+
 	# #// (9.5.4)
 	# #check if log_IOPs out of range
-	# mi = nn_rw_iop.get().getOutmin();
-	# ma = nn_rw_iop.get().getOutmax();
+	# mi = nn_rw_iop.getOutmin();
+	# ma = nn_rw_iop.getOutmax();
 	# boolean iop_oor_flag = false;
 	# for (int iv = 0; iv < log_iops_nn1.length; iv++) {
 	# 	if (log_iops_nn1[iv] < mi[iv] | log_iops_nn1[iv] > ma[iv]) {
@@ -235,33 +318,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sensor):
 	#
 	#
 
-	###
-	# SZA, VZA, diffAzimuthA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit
-	Double = jpy.get_type('java.lang.Double')
-	#nn_in_for = np.array((30., 30., 120., 15., 25., 0., -1., -1., -1., -3.)) # caution: dtype=np.float32 leads to errror in next line.
-	#log_rw_nn2 = np.array(nn_iop_rw.calc(nn_in_for), dtype=np.float32)
-	#print(log_rw_nn2)
-
-	#double_nn_in_for = np.array((Double(45.), Double(30.), Double(120.), Double(15.), Double(25.),
-	#							 Double(-2.), Double(-2.), Double(-2.), Double(-2.), Double(-3.)))
-	#log_rw_nn2 = np.array(nn_iop_rw.calc(double_nn_in_for), dtype=np.float32)
-
-#Name	X	Y	Lon	Lat							log_adet	log_agelb	log_apig	log_bpart	log_bwit	rhow_1	rhow_2	rhow_3	rhow_4	rhow_5	rhow_6	rhow_7	rhow_8	rhow_9	rhow_10	rhow_11	rhow_12	OAA	OZA	SAA	SZA
-#pin_1	437.5	235.5	3.825742	56.397962	-4.956355	-3.7658699	-4.3414865	-1.8608053	-2.6944041	0.009959362	0.01134242	0.014025537	0.01487543	0.010059207	0.005442682	0.0010344568	5.945379E-4	5.734044E-4	5.45633E-4	2.7334824E-4	7.638413E-5	106.33723	8.41573	155.42921	51.091805
-#pin_2	315.5	189.5	3.369955	56.597397	-5.088239	-4.04009	-4.5042415	-1.5932024	-3.473691	0.013867372	0.015864057	0.019084657	0.019100675	0.01233714	0.006331922	0.0011564749	6.558736E-4	6.272484E-4	5.924552E-4	2.9530638E-4	8.18309E-5	105.94441	10.97436	154.92598	51.3791
-#pin_3	261.5	291.5	3.013032	56.374021	-3.9385555	-3.2776499	-3.4899228	-1.7674016	-0.70727175	0.0077605355	0.008688468	0.010997476	0.014358465	0.012292771	0.009077219	0.0021156792	0.0012308386	0.0011759225	0.0011434247	6.446244E-4	1.8506091E-4	105.67807	12.095442	154.42883	51.258068
-#pin_4	581.5	90.5	4.624798	56.662986	-5.0377655	-3.6873133	-4.332324	-2.0587044	-2.844635	0.008768552	0.009983219	0.012415685	0.013173553	0.008856366	0.004725398	9.098557E-4	5.228566E-4	5.064532E-4	4.8198106E-4	2.3771799E-4	6.621309E-5	106.967384	5.360547	156.48013	51.16074
-
-	lam = np.array((400.0, 412.5, 442.5, 490.0, 510.0, 560.0, 620.0, 665.0, 673.75, 681.25, 708.75, 753.75))
-
-	double_nn_in_for = np.array((Double(51.091805), Double(8.41573), Double(155.42921- 106.33723), Double(15.), Double(30.),
-								 Double(-4.3414865), Double(-4.956355), Double(-3.7658699), Double(-1.8608053), Double(-2.6944041)))
-	log_rw_nn2 = np.array(nn_iop_rw.calc(double_nn_in_for), dtype=np.float32) # returns always the same numbers!!
-
-	print((log_rw_nn2))
-	print(np.exp(log_rw_nn2))
-
-	return np.ones(10)*0.03
+	return output
 
 
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
@@ -352,14 +409,42 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	valid_L1 = check_valid_pixel_expression_L1(product, sensor)
 
 
+
 	###
-	# IOP to rhow
-	# at the moment just fixed value, single pixel spectrum shape(12)
-	# todo input: numpy array (pixels, iops) ?? or single pixel?
-	# todo returns: numpy array (pixels, wavelength) ?? or single pixel spectrum?
-	###
-	iop = 0.
-	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sensor)
+	# forwardNN: IOP to rhow
+	# input: numpy array iop, shape=(Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
+	#		np.array sza, shape = (Npixels,)
+	#		np.array vza, shape = (Npixels,)
+	#		np.array diff_azim, shape = (Npixels,); range: 0-180
+	# returns: numpy array, shape=(Npixels, wavelengths)
+	### Examples:
+	# apply_forwardNN_IOP_to_rhow_example()
+	# apply_forwardNN_IOP_to_rhow_arrayExample(sensor)
+
+	iop = np.zeros((2,5))
+	# Please keep this order! Necessary for NN application : log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	iop[0,:] = (-4.3414865, -4.956355, - 3.7658699 ,- 1.8608053, - 2.6944041)
+	iop[1,:] = ( -4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
+	sza = np.array((51.091805, 51.3791))
+	vza = np.array((8.41573, 10.97436))
+	diff_azim = np.array((155.42921-106.33723, 154.92598-105.94441))
+
+	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
+
+	test_rhow_fromTOA = np.zeros((2, 12))
+	test_rhow_fromTOA[0,:] = (0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4, 5.734044E-4, 5.45633E-4, 2.7334824E-4, 7.638413E-5)
+	test_rhow_fromTOA[1,:] = (0.013867372, 0.015864057, 0.019084657, 0.019100675, 0.01233714, 0.006331922, 0.0011564749, 6.558736E-4, 6.272484E-4, 5.924552E-4, 2.9530638E-4, 8.18309E-5)
+
+	lam = np.array((400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754))
+
+	mycol = np.array(('c', 'r'))
+
+	for i in range(rhow_mod.shape[0]):
+		plt.plot(lam, rhow_mod[i,:], '--', color=mycol[i])
+		plt.plot(lam, test_rhow_fromTOA[i, :], '-', color=mycol[i])
+
+	plt.show()
+
 
 
 	###
