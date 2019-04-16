@@ -114,6 +114,40 @@ def Level1_Reader(product, sensor, band_group='radiance'):
 
 	return X
 
+def angle_Reader(product, sensor):
+	if sensor == 'OLCI':
+		band = get_band_or_tiePointGrid(product, 'OAA')
+		oaa = np.zeros((band.shape[0] * band.shape[1]))
+		oaa = band.reshape((oaa.shape[0],))
+
+		band = get_band_or_tiePointGrid(product, 'OZA')
+		oza = np.zeros((band.shape[0] * band.shape[1]))
+		oza = band.reshape((oza.shape[0],))
+
+		band = get_band_or_tiePointGrid(product, 'SZA')
+		sza = np.zeros((band.shape[0] * band.shape[1]))
+		sza = band.reshape((sza.shape[0],))
+
+		band = get_band_or_tiePointGrid(product, 'SAA')
+		saa = np.zeros((band.shape[0] * band.shape[1]))
+		saa = band.reshape((saa.shape[0],))
+
+	return oaa, oza, sza, saa
+
+
+def calculate_diff_azim(oaa, saa):
+	###
+	# azimuth difference as input to the NN is defined in a range between 0° and 180°
+
+	x = np.array(oaa - saa)
+	ID = np.array( x < 0)
+	if np.sum(ID)>0.:
+		x[ID] = 360. + x[ID]
+	ID = np.array(x > 180.)
+	if np.sum(ID)>0.:
+		x[ID] = x[ID] -180.
+
+	return x
 
 def check_valid_pixel_expression_L1(product, sensor):
 	if sensor == 'OLCI':
@@ -216,41 +250,81 @@ def apply_forwardNN_IOP_to_rhow_example():
 	plt.plot(lam, np.exp(log_rw_nn2), 'c--')
 	plt.show()
 
-
+### Example 1 c2rcc 2016/2017
 # Name	X	Y	Lon	Lat							log_adet	log_agelb	log_apig	log_bpart	log_bwit	rhow_1	rhow_2	rhow_3	rhow_4	rhow_5	rhow_6	rhow_7	rhow_8	rhow_9	rhow_10	rhow_11	rhow_12	OAA	OZA	SAA	SZA
 	# pin_1	437.5	235.5	3.825742	56.397962	-4.956355	-3.7658699	-4.3414865	-1.8608053	-2.6944041	0.009959362	0.01134242	0.014025537	0.01487543	0.010059207	0.005442682	0.0010344568	5.945379E-4	5.734044E-4	5.45633E-4	2.7334824E-4	7.638413E-5	106.33723	8.41573	155.42921	51.091805
 	# pin_2	315.5	189.5	3.369955	56.597397	-5.088239	-4.04009	-4.5042415	-1.5932024	-3.473691	0.013867372	0.015864057	0.019084657	0.019100675	0.01233714	0.006331922	0.0011564749	6.558736E-4	6.272484E-4	5.924552E-4	2.9530638E-4	8.18309E-5	105.94441	10.97436	154.92598	51.3791
 	# pin_3	261.5	291.5	3.013032	56.374021	-3.9385555	-3.2776499	-3.4899228	-1.7674016	-0.70727175	0.0077605355	0.008688468	0.010997476	0.014358465	0.012292771	0.009077219	0.0021156792	0.0012308386	0.0011759225	0.0011434247	6.446244E-4	1.8506091E-4	105.67807	12.095442	154.42883	51.258068
 	# pin_4	581.5	90.5	4.624798	56.662986	-5.0377655	-3.6873133	-4.332324	-2.0587044	-2.844635	0.008768552	0.009983219	0.012415685	0.013173553	0.008856366	0.004725398	9.098557E-4	5.228566E-4	5.064532E-4	4.8198106E-4	2.3771799E-4	6.621309E-5	106.967384	5.360547	156.48013	51.16074
 
+### Example 2 c2r 201904
+#Name	X	Y	Lon	Lat							iop_adet	iop_agelb	iop_apig	iop_bpart	iop_bwit	rhow_1	rhow_2	rhow_3	rhow_4	rhow_5	rhow_6	rhow_7	rhow_8	rhow_9	rhow_11	rhow_12	OAA	OZA	SAA	SZA
+#pin_1	476.5	231.5	3.993265	56.381533	0.027343486	0.021865448	0.02313981	0.16197646	0.11456131	0.0096926335	0.009946768	0.009698673	0.009246618	0.0071290717	0.0045980685	0.0011407222	6.9232716E-4	6.9392053E-4	6.8216515E-4	3.2724423E-4	9.311986E-5	106.47686	7.592013	155.63219	51.038136
+#pin_2	791.5	144.5	5.430028	56.375004	0.06849463	0.049048793	0.042024814	0.737513	0.65764487	0.014872396	0.015654514	0.016917245	0.019503482	0.017883737	0.014397462	0.0044253394	0.002696726	0.0026146006	0.0025478457	0.0013499877	3.8966344E-4	107.70104	0.86169	157.40138	50.720493
+#pin_3	1087.5	140.5	6.659461	56.159049	0.047663715	0.052653775	0.08010797	0.55395997	0.42619917	0.009425671	0.009672539	0.009948069	0.011273121	0.010529963	0.008871017	0.0027428195	0.0016406277	0.0016266676	0.001634283	8.882042E-4	2.5643408E-4	-71.3413	5.483421	158.88246	50.267815
+#pin_4	893.5	153.5	5.840092	56.27681	0.07499708	0.08046007	0.080823615	1.7166388	1.4494008	0.022707473	0.023912517	0.026493134	0.03272301	0.03230792	0.029830737	0.010091868	0.005850822	0.0055907085	0.005481569	0.0029984459	8.490639E-4	-72.05109	1.3295213	157.88736	50.542614
 
-def apply_forwardNN_IOP_to_rhow_arrayExample(sensor):
-	iop = np.zeros((2,5))
-	#log_apig, log_adet, log a_gelb, log_bpart, log_bwit
-	iop[0,:] = (-4.3414865, -4.956355, - 3.7658699 ,- 1.8608053, - 2.6944041)
-	iop[1,:] = ( -4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
-	sza = np.array((51.091805, 51.3791))
-	vza = np.array((8.41573, 10.97436))
-	diff_azim = np.array((155.42921-106.33723, 154.92598-105.94441))
-
-	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
-
-	test_rhow_fromTOA = np.zeros((2, 12))
-	test_rhow_fromTOA[0,:] = (0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4, 5.734044E-4, 5.45633E-4, 2.7334824E-4, 7.638413E-5)
-	test_rhow_fromTOA[1,:] = (0.013867372, 0.015864057, 0.019084657, 0.019100675, 0.01233714, 0.006331922, 0.0011564749, 6.558736E-4, 6.272484E-4, 5.924552E-4, 2.9530638E-4, 8.18309E-5)
-
+def load_example_data( exampleNo = 1):
 	lam = np.array((400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754))
+	if exampleNo == 2: # c2r 201904
+		iop = np.zeros((2, 5))
+		# log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+		iop[0, :] = (0.02313981, 0.027343486, 0.021865448, 0.16197646, 0.11456131)
+		iop[1, :] = (0.042024814, 0.06849463, 0.049048793, 0.737513, 0.65764487)
+		iop = np.log(iop)
+
+		sza = np.array((51.038136, 50.720493))
+		vza = np.array((7.592013, 0.86169))
+		diff_azim = np.array((155.63219 - 106.47686 , 157.40138 - 107.70104))
+		test_rhow_fromTOA = np.zeros((2, 12))
+		test_rhow_fromTOA[0, :] = (0.0096926335, 0.009946768, 0.009698673, 0.009246618, 0.0071290717, 0.0045980685,
+								   0.0011407222, 6.9232716E-4, 6.9392053E-4, 6.8216515E-4, 3.2724423E-4, 9.311986E-5)
+		test_rhow_fromTOA[1, :] = (0.014872396,	0.015654514, 0.016917245, 0.019503482, 0.017883737, 0.014397462,
+								   0.0044253394, 0.002696726, 0.0026146006, 0.0025478457, 0.0013499877, 3.8966344E-4)
+
+	if exampleNo == 1:  # c2rcc 2016
+		iop = np.zeros((2, 5))
+		# log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+		iop[0, :] = (-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.6944041)
+		iop[1, :] = (-4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
+		sza = np.array((51.091805, 51.3791))
+		vza = np.array((8.41573, 10.97436))
+		diff_azim = np.array((155.42921 - 106.33723, 154.92598 - 105.94441))
+		test_rhow_fromTOA = np.zeros((2, 12))
+		test_rhow_fromTOA[0, :] = (
+			0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4,
+			5.734044E-4, 5.45633E-4, 2.7334824E-4, 7.638413E-5)
+		test_rhow_fromTOA[1, :] = (
+			0.013867372, 0.015864057, 0.019084657, 0.019100675, 0.01233714, 0.006331922, 0.0011564749, 6.558736E-4,
+			6.272484E-4, 5.924552E-4, 2.9530638E-4, 8.18309E-5)
+
+	return iop, sza, vza, diff_azim, test_rhow_fromTOA, lam
+
+def apply_forwardNN_IOP_to_rhow_arrayExample(sensor, exampleNo=1):
+
+	if exampleNo == 1:
+		iop, sza, vza, diff_azim, test_rhow_fromTOA, lam = load_example_data(1)
+		rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
+		label = 'c2rcc_2016'
+
+	if exampleNo == 2:
+		iop, sza, vza, diff_azim, test_rhow_fromTOA, lam = load_example_data(2)
+		rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor, nn='new')
+		label = 'c2rcc_2019'
+
 
 	mycol = np.array(('c', 'r'))
 
 	for i in range(rhow_mod.shape[0]):
-		plt.plot(lam, rhow_mod[i,:], '--', color=mycol[i])
-		plt.plot(lam, test_rhow_fromTOA[i, :], '-', color=mycol[i])
+		plt.plot(lam, rhow_mod[i, :], '--', color=mycol[i], label=label)
+		#plt.plot(lam, rhow_mod_new[i, :], '-.', color=mycol[i], label='nn_2019')
+		plt.plot(lam, test_rhow_fromTOA[i, :], '-', color=mycol[i], label='c2rcc_rhow_from_TOA')
 
+	plt.legend()
 	plt.show()
 
 
-def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, T=15, S=35):
+def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, T=15, S=35, nn=''):
 	# iop : pixels x (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)
 	# sun_zenith, view_zenith, diff_azimuth (0-180°) : pixels
 	# T, S: currently constant.
@@ -267,6 +341,9 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 	output = np.zeros((iop.shape[0], nBands))
 
 	nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/17x97x47_464.3.net"
+	#if nn == 'new':
+	#	nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+
 	NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
 	nnfile = open(nnFilePath, 'r')
 	nnCode = nnfile.read()
@@ -321,7 +398,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 	return output
 
 
-def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
+def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict, singleBand_dict=None):
 	File = jpy.get_type('java.io.File')
 	width = product.getSceneRasterWidth()
 	height = product.getSceneRasterHeight()
@@ -330,7 +407,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
 	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
 	balticPACProduct.setFileLocation(File(baltic__product_path))
 
-	ProductUtils.copyGeoCoding(product, balticPACProduct)  # geocoding is copied when tie point grids are copied,
+	ProductUtils.copyGeoCoding(product, balticPACProduct)
 	ProductUtils.copyTiePointGrids(product, balticPACProduct)
 
 	if (sensor == 'OLCI'):
@@ -360,9 +437,16 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
 		autoGroupingString += ':' + key
 	balticPACProduct.setAutoGrouping(autoGroupingString)
 
+	if not singleBand_dict is None:
+		for key in singleBand_dict.keys():
+			singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
+			singleBand.setNoDataValue(np.nan)
+			singleBand.setNoDataValueUsed(True)
+
 	writer = ProductIO.getProductWriter('BEAM-DIMAP')
 	balticPACProduct.setProductWriter(writer)
 	balticPACProduct.writeHeader(baltic__product_path)
+	writer.writeProductNodes(balticPACProduct, baltic__product_path)
 
 	# set datarhow, rhown, uncertainties for rhow
 	for key in data_dict.keys():
@@ -374,6 +458,15 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict):
 				out = np.array(x[:, i]).reshape(bandShape)
 				rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
 										 ProgressMonitor.NULL)
+
+	if not singleBand_dict is None:
+		for key in singleBand_dict.keys():
+			x = singleBand_dict[key].get('data')
+			if not x is None:
+				singleBand = balticPACProduct.getBand(key)
+				out = np.array(x).reshape(bandShape)
+				singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+											 ProgressMonitor.NULL)
 
 
 	# # Create flag coding
@@ -417,33 +510,24 @@ def apply_NN_to_scene(scene_path='', filename='', outpath='', sensor=''):
 	#		np.array vza, shape = (Npixels,)
 	#		np.array diff_azim, shape = (Npixels,); range: 0-180
 	# returns: numpy array, shape=(Npixels, wavelengths)
-	### Examples:
+	###
+	# Examples:
 	# apply_forwardNN_IOP_to_rhow_example()
-	# apply_forwardNN_IOP_to_rhow_arrayExample(sensor)
+	apply_forwardNN_IOP_to_rhow_arrayExample(sensor, 1)
+	apply_forwardNN_IOP_to_rhow_arrayExample(sensor, 2)
 
-	iop = np.zeros((2,5))
-	# Please keep this order! Necessary for NN application : log_apig, log_adet, log a_gelb, log_bpart, log_bwit
-	iop[0,:] = (-4.3414865, -4.956355, - 3.7658699 ,- 1.8608053, - 2.6944041)
-	iop[1,:] = ( -4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
-	sza = np.array((51.091805, 51.3791))
-	vza = np.array((8.41573, 10.97436))
-	diff_azim = np.array((155.42921-106.33723, 154.92598-105.94441))
+	###
+	# iop = np.zeros((2,5))
+	# # Please keep this order! Necessary for NN application : log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+	# iop[0,:] = (-4.3414865, -4.956355, - 3.7658699 ,- 1.8608053, - 2.6944041)
+	# iop[1,:] = ( -4.5042415, -5.088239, -4.04009, -1.5932024, -3.473691)
+	# sza = np.array((51.091805, 51.3791))
+	# vza = np.array((8.41573, 10.97436))
+	# diff_azim = np.array((155.42921-106.33723, 154.92598-105.94441)) # between 0 - 180.
+	#
+	# rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
 
-	rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor)
 
-	test_rhow_fromTOA = np.zeros((2, 12))
-	test_rhow_fromTOA[0,:] = (0.009959362, 0.01134242, 0.014025537, 0.01487543, 0.010059207, 0.005442682, 0.0010344568, 5.945379E-4, 5.734044E-4, 5.45633E-4, 2.7334824E-4, 7.638413E-5)
-	test_rhow_fromTOA[1,:] = (0.013867372, 0.015864057, 0.019084657, 0.019100675, 0.01233714, 0.006331922, 0.0011564749, 6.558736E-4, 6.272484E-4, 5.924552E-4, 2.9530638E-4, 8.18309E-5)
-
-	lam = np.array((400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754))
-
-	mycol = np.array(('c', 'r'))
-
-	for i in range(rhow_mod.shape[0]):
-		plt.plot(lam, rhow_mod[i,:], '--', color=mycol[i])
-		plt.plot(lam, test_rhow_fromTOA[i, :], '-', color=mycol[i])
-
-	plt.show()
 
 
 
@@ -487,6 +571,8 @@ def main(args=sys.argv[1:]):
 	current_path = os.path.dirname(__file__)
 	path = current_path + '\\test_data\\'
 
+	###
+	# use SNAP with option S3TBX pixelGeoCoding turned off!
 	fnames = os.listdir(path)
 	fnames = [fn for fn in fnames if '.dim' in fn]  # OLCI
 
