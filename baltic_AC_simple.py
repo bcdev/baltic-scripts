@@ -312,7 +312,9 @@ def apply_forwardNN_IOP_to_rhow_arrayExample(sensor, exampleNo=1):
 		rhow_mod = apply_forwardNN_IOP_to_rhow(iop, sza, vza, diff_azim, sensor, nn='new')
 		label = 'c2rcc_2019'
 
-
+	print('rhow_mod')
+	print(rhow_mod)
+	print()
 	mycol = np.array(('c', 'r'))
 
 	for i in range(rhow_mod.shape[0]):
