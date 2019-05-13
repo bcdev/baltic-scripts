@@ -33,31 +33,31 @@ import luts_olci
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Select forward NN once for all
-nnFilePath = "forwardNN_c2rcc/olci/olci_20161012/iop_rw/17x97x47_464.3.net"
+nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
 NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
 nnfile = open(nnFilePath, 'r')
 nnCode = nnfile.read()
 nn_iop_rw = NNffbpAlphaTabFast(nnCode)
 
 def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
-	##
-	# This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
-	# The fuction returns a numpy array of shape (height, width)
-	##
-	height = product.getSceneRasterHeight()
-	width = product.getSceneRasterWidth()
-	var = np.zeros(width * height, dtype=dtype)
-	if name in list(product.getBandNames()):
-		product.getBand(name).readPixels(0, 0, width, height, var)
-	elif name in list(product.getTiePointGridNames()):
-		product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
-	else:
-		raise Exception('{}: neither a band nor a tie point grid'.format(name))
+    ##
+    # This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
+    # The fuction returns a numpy array of shape (height, width)
+    ##
+    height = product.getSceneRasterHeight()
+    width = product.getSceneRasterWidth()
+    var = np.zeros(width * height, dtype=dtype)
+    if name in list(product.getBandNames()):
+        product.getBand(name).readPixels(0, 0, width, height, var)
+    elif name in list(product.getTiePointGridNames()):
+        product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
+    else:
+        raise Exception('{}: neither a band nor a tie point grid'.format(name))
 
-	if reshape:
-		var.shape = (height, width)
+    if reshape:
+        var.shape = (height, width)
 
-	return var
+    return var
 
 def Level1_Reader(product, sensor, band_group='radiance', reshape=True):
     input_label = []
@@ -84,7 +84,7 @@ def get_yday(product,reshape=True):
     # Get product size
     height = product.getSceneRasterHeight()
     width = product.getSceneRasterWidth()
-    
+
     # Get yday of each row
     dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
     dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
@@ -97,26 +97,26 @@ def get_yday(product,reshape=True):
     yday = np.array(yday*width).reshape(width,height).transpose()
 
     if not reshape:
-	yday = np.ravel(yday)
+        yday = np.ravel(yday)
 
     return yday
 
 def read_NN_metadata(nnpath):
-	##
-	# read the metadata:
-	# nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
-	meta_fnames = os.listdir(nnpath)
-	meta_fn = [fn for fn in meta_fnames if 'Metadata_' in fn]
-	with open(nnpath + meta_fn[0], "r") as f:
-		d = f.read()
-	training_meta = json.loads(d)
-	f.close()
-	model_fn = [fn for fn in meta_fnames if 'MetadataModel_' in fn]
-	with open(nnpath + model_fn[0], "r") as f:
-		d = f.read()
-	model_meta = json.loads(d)
-	f.close()
-	return training_meta, model_meta
+    ##
+    # read the metadata:
+    # nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
+    meta_fnames = os.listdir(nnpath)
+    meta_fn = [fn for fn in meta_fnames if 'Metadata_' in fn]
+    with open(nnpath + meta_fn[0], "r") as f:
+        d = f.read()
+    training_meta = json.loads(d)
+    f.close()
+    model_fn = [fn for fn in meta_fnames if 'MetadataModel_' in fn]
+    with open(nnpath + model_fn[0], "r") as f:
+        d = f.read()
+    model_meta = json.loads(d)
+    f.close()
+    return training_meta, model_meta
 
 def radianceToReflectance_Reader(product, sensor = '', print_info=False):
 
@@ -235,11 +235,11 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     """
     Apply the forwardNN: IOP to rhow
     input: numpy array iop, shape = (Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
-    		np.array sza, shape = (Npixels,)
-    		np.array oza, shape = (Npixels,)
-    		np.array raa, shape = (Npixels,); range: 0-180
+            np.array sza, shape = (Npixels,)
+            np.array oza, shape = (Npixels,)
+            np.array raa, shape = (Npixels,); range: 0-180
     returns: np.array rhow, shape = (Npixels, wavelengths)
-    
+
     T, S: currently constant #TODO take ECMWF temperature at sea surface?
     valid ranges can be found at the beginning of the .net-file.
 
@@ -254,7 +254,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     output = np.zeros((iop.shape[0], nBands)) + np.NaN
 
     ###
-    # Launch the NN 
+    # Launch the NN
     # Important: input array has to be of size 10: [SZA, VZA, RAA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
     inputNN = np.zeros(10)
     inputNN[3] = T
@@ -350,6 +350,12 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, data_dict, s
     balticPACProduct.writeHeader(baltic__product_path)
     writer.writeProductNodes(balticPACProduct, baltic__product_path)
 
+    # Write Latitude, Longitude explicitly
+    geoBand = balticPACProduct.getBand('longitude')
+    geoBand.writeRasterDataFully()
+    geoBand = balticPACProduct.getBand('latitude')
+    geoBand.writeRasterDataFully()
+
     # Write data of spectral fields
     for key in data_dict.keys():
         data = data_dict[key].get('data')
@@ -436,7 +442,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa
     chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
     return chi2
 
-def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None):
+def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = ''):
     """
     Main function to run the Baltic+ AC based on forward NN
     """
@@ -502,7 +508,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         adf_clp = luts_olci.LUT_CLP(file_adf_clp)
     #elif sensor == 'S2' TODO
 
-    print "Pre-corrections"
+    print("Pre-corrections")
     # Gaseous correction
     rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
             pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
@@ -520,11 +526,11 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
 
     # Atmospheric model
-    print "Compute atmospheric matrices"
+    print("Compute atmospheric matrices")
     Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
     # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    print "Inversion"
+    print("Inversion")
     niop = 5
     iop = np.zeros((npix,niop)) + np.NaN
     percent_old = 0
@@ -547,10 +553,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         iop[ipix,:] = NM_res.x
         #success = NM_res.success TODO add a flag in the Level-2 output to get this info
         ipix_proc += 1
-    print ""
+    print("")
 
     # Compute the final residual
-    print "Compute final residual"
+    print("Compute final residual")
     rho_wmod = np.zeros((npix, nbands)) + np.NaN
     rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
     rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
@@ -563,16 +569,16 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     rho_w[:,iband_abs] = np.NaN
 
     # TODO Normalisation
-    # rho_wn = 
+    # rho_wn =
 
     # TODO uncertainties
-    # unc_rhow = 
+    # unc_rhow =
 
     ###
     # Writing a product
     # input: data_dict holds the band
     ###
-    baltic__product_path = os.path.join(outpath,'baltic_' + filename)
+    baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
     data_dict = {
             #'rho_toa':{'data': rho_toa},
             #'rho_ng':{'data': rho_ng},
