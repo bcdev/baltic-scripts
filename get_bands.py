@@ -16,7 +16,7 @@ def main(sensor,proc):
         #bands_corr = [400,412,443,490,510,560,620,665,674,681,709,754,            779,865,            1020] #C2RCC
     #elif sensor == 'S2' #TODO
     else:
-        print "Unknown sensor %s"%sensor
+        print( "Unknown sensor %s"%sensor)
         sys.exit(1)
 
     return(bands_sat, bands_rw, bands_corr)
