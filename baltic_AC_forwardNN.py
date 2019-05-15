@@ -24,10 +24,11 @@ from snappy import FlagCoding
 from snappy import jpy
 
 # local import
-from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance
+from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos
 import get_bands
 from misc import default_ADF, nlinear
-import luts_olci 
+import luts_olci
+import lut_hygeos
 
 # Set locale for proper time reading with datetime
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
@@ -486,6 +487,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 	Main function to run the Baltic+ AC based on forward NN
 	"""
 
+        # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
+        correction = 'HYGEOS'
+
 	# Get sensor & AC bands
 	bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
 	nbands = len(bands_sat)
@@ -552,17 +556,28 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 	rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
 			pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
 
-	# Glint correction
-	rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
 	# Compute diffuse transmittance (Rayleigh)
 	td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
 
-	# White-caps correction
-	#rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+	# Glint correction
+	rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
 
-	# Rayleigh correction
-	rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
+        if correction == 'IPF':
+            # Glint correction
+            rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+
+            # White-caps correction
+            #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+
+            # Rayleigh correction
+            rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
+    
+        elif correction == 'HYGEOS':
+            # Glint correction - required only to get rho_g in the AC
+            rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+
+            # Glint + Rayleigh correction
+            rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
 
 	# Atmospheric model
 	print("Compute atmospheric matrices")

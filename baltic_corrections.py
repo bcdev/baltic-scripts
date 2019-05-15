@@ -3,6 +3,7 @@
 
 import numpy as np
 from misc import nlinear
+from bodhaine import rod
 
 def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wavelength, pressure, ozone, tcwv, adf_ppp, adf_clp, sensor):
     """
@@ -173,3 +174,40 @@ def diffuse_transmittance(sza, oza, pressure, adf_ppp):
     td = np.exp(-0.5*adf_ppp.tau_ray*pressure[:,None]/adf_ppp.std_press*air_mass[:,None])
 
     return td
+
+def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT):
+    """
+    Rayleigh + glint correction from HYGEOS LUT
+    This includes correction for pressure and smile
+    Care : rho_r is also return without the glint term
+    """
+    # Initialise Rayleigh and Rayleigh corrected reflectance
+    rho_molgli = np.zeros(rho_ng.shape) + np.NaN
+    rho_rc = np.copy(rho_ng)
+    tau_ray = np.zeros(rho_ng.shape)
+
+    # Compute Rayleigh optical thickness from Bodhaine
+    co2 = 400
+    altitude = 0.
+    for i in range(tau_ray.shape[1]):
+        tau_ray[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
+
+    # Compiute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
+    axes = [LUT.muv, LUT.raa, LUT.mus, LUT.tau, LUT.wind]
+    for i in range(tau_ray.shape[1]):
+        x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i], windm]
+        rho = nlinear(x, LUT.rho_molgli, axes) # Rayleigh+glint
+        rho_molgli[valid,i] = rho[valid]
+
+    # Correct for Rayleigh + glint
+    rho_rc -= rho_molgli
+
+    # Compute rho_r only for the AC inversion
+    rho_r = np.zeros(rho_ng.shape)
+    axes = [LUT.muv, LUT.raa, LUT.mus, LUT.tau]
+    for i in range(tau_ray.shape[1]):
+        x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i]]
+        rho_r[:,i] = nlinear(x, LUT.rho_mol, axes) # Rayleigh
+
+    return rho_r, rho_molgli, rho_rc
+
