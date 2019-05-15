@@ -62,10 +62,33 @@ def main(args=sys.argv[1:]):
     #          'subset_baltic_S3B_OL_1_ERR____20190415T084404.dim', 'subset_Baltic_S3A_OL_1_ERR____20190418T094541.dim',
     #          'subset_NorthSea_S3A_OL_1_ERR____20190418T094541.dim']
 
+    
+    # Define output fields
+    outputSpectral={
+            #'rho_toa'    :'rho_toa',
+            #'rho_ng'    :'rho_ng',
+            #'rho_gc'    :'rho_gc',
+            'rho_rc'    :'rho_rc',
+            'rho_ag'    :'rho_ag',
+            'rho_ag_mod':'rho_ag_mod',
+            'td'        :'td',
+            'rho_w'     :'rho_w',
+            'rho_wmod'  :'rho_wmod',
+            }
+    outputScalar = {
+            'log_apig' :'iop[:,0]',
+            'log_adet' :'iop[:,1]',
+            'log_agelb':'iop[:,2]',
+            'log_bpart':'iop[:,3]',
+            'log_bwit' :'iop[:,4]',
+            }
+
+    # Launch the AC
     for i,fn in enumerate(fnames[:]):
         print(fn)
         #baltic_AC_forwardNN(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor, subset=subset[i],addName=str(i)+'_Forwardc2rccv2')
-        baltic_AC_forwardNN(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor, addName='_Forwardc2rccv2')
+        baltic_AC_forwardNN(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor, addName='_Forwardc2rccv2',
+                outputSpectral=outputSpectral, outputScalar=outputScalar)
 
 if __name__ == '__main__':
     main()
