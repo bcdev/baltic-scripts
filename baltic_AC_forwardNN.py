@@ -320,11 +320,11 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 	return output
 
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
-    # Initialise the output product
-    File = jpy.get_type('java.io.File')
-    width = product.getSceneRasterWidth()
-    height = product.getSceneRasterHeight()
-    bandShape = (height, width)
+	# Initialise the output product
+	File = jpy.get_type('java.io.File')
+	width = product.getSceneRasterWidth()
+	height = product.getSceneRasterHeight()
+	bandShape = (height, width)
 
 	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
 	balticPACProduct.setFileLocation(File(baltic__product_path))
@@ -340,28 +340,28 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
 	# Get TOA radiance sources for spectral band properties
 	bsources = [product.getBand("Oa%02d_radiance"%(i+1)) for i in range(nbands)]
 
-    # Create empty bands for spectral fields (note: number of spectral bands may differ)
-    for key in spectral_dict.keys():
-        data = spectral_dict[key].get('data')
-        if not data is None:
-            nbands_key = data.shape[-1]
-            for i in range(nbands_key):
-                brtoa_name = key + "_" + str(i + 1)
-                rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
-                ProductUtils.copySpectralBandProperties(bsources[i], rtoaBand)
-                rtoaBand.setNoDataValue(np.nan)
-                rtoaBand.setNoDataValueUsed(True)
+	# Create empty bands for spectral fields (note: number of spectral bands may differ)
+	for key in spectral_dict.keys():
+		data = spectral_dict[key].get('data')
+		if not data is None:
+			nbands_key = data.shape[-1]
+			for i in range(nbands_key):
+				brtoa_name = key + "_" + str(i + 1)
+				rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
+				ProductUtils.copySpectralBandProperties(bsources[i], rtoaBand)
+				rtoaBand.setNoDataValue(np.nan)
+				rtoaBand.setNoDataValueUsed(True)
 
-    # Set auto grouping
-    autoGroupingString = ':'.join(spectral_dict.keys())
-    balticPACProduct.setAutoGrouping(autoGroupingString)
+	# Set auto grouping
+	autoGroupingString = ':'.join(spectral_dict.keys())
+	balticPACProduct.setAutoGrouping(autoGroupingString)
 
-    # Create empty bands for scalar fields
-    if not scalar_dict is None:
-        for key in scalar_dict.keys():
-            singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
-            singleBand.setNoDataValue(np.nan)
-            singleBand.setNoDataValueUsed(True)
+	# Create empty bands for scalar fields
+	if not scalar_dict is None:
+		for key in scalar_dict.keys():
+			singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
+			singleBand.setNoDataValue(np.nan)
+			singleBand.setNoDataValueUsed(True)
 
 	# Initialise writer
 	writer = ProductIO.getProductWriter('BEAM-DIMAP')
@@ -374,33 +374,33 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
 	geoBand.writeRasterDataFully()
 	geoBand = balticPACProduct.getBand('latitude')
 	geoBand.writeRasterDataFully()
-    # Write Latitude, Longitude explicitly
-    """geoBand = balticPACProduct.getBand('longitude')
-    geoBand.writeRasterDataFully()
-    geoBand = balticPACProduct.getBand('latitude')
-    geoBand.writeRasterDataFully()"""
+	# Write Latitude, Longitude explicitly
+	"""geoBand = balticPACProduct.getBand('longitude')
+	geoBand.writeRasterDataFully()
+	geoBand = balticPACProduct.getBand('latitude')
+	geoBand.writeRasterDataFully()"""
 
-    # Write data of spectral fields
-    for key in spectral_dict.keys():
-        data = spectral_dict[key].get('data')
-        if not data is None:
-            nbands_key = data.shape[-1]
-            for i in range(nbands_key):
-                brtoa_name = key + "_" + str(i + 1)
-                rtoaBand = balticPACProduct.getBand(brtoa_name)
-                out = np.array(data[:, i]).reshape(bandShape)
-                rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-                                                                         ProgressMonitor.NULL)
+	# Write data of spectral fields
+	for key in spectral_dict.keys():
+		data = spectral_dict[key].get('data')
+		if not data is None:
+			nbands_key = data.shape[-1]
+			for i in range(nbands_key):
+				brtoa_name = key + "_" + str(i + 1)
+				rtoaBand = balticPACProduct.getBand(brtoa_name)
+				out = np.array(data[:, i]).reshape(bandShape)
+				rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+																		 ProgressMonitor.NULL)
 
-    # Write data of scalar fields
-    if not scalar_dict is None:
-        for key in scalar_dict.keys():
-            data = scalar_dict[key].get('data')
-            if not data is None:
-                singleBand = balticPACProduct.getBand(key)
-                out = np.array(data).reshape(bandShape)
-                singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-                                                                         ProgressMonitor.NULL)
+	# Write data of scalar fields
+	if not scalar_dict is None:
+		for key in scalar_dict.keys():
+			data = scalar_dict[key].get('data')
+			if not data is None:
+				singleBand = balticPACProduct.getBand(key)
+				out = np.array(data).reshape(bandShape)
+				singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+																		 ProgressMonitor.NULL)
 
 	# # Create flag coding
 	# raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
@@ -482,9 +482,9 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa
 	return chi2
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None):
-    """
-    Main function to run the Baltic+ AC based on forward NN
-    """
+	"""
+	Main function to run the Baltic+ AC based on forward NN
+	"""
 
 	# Get sensor & AC bands
 	bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
@@ -613,25 +613,25 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 	# TODO uncertainties
 	# unc_rhow =
 
-    ###
-    # Writing a product
-    # input: spectral_dict holds the spectral fields
-    #        scalar_dict holds the scalar fields
-    ###
-    baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
-    if outputSpectral:
-        spectral_dict = {}
-        for field in outputSpectral.keys():
-            spectral_dict[field] = {'data': eval(outputSpectral[field])}
-    else: spectral_dict = None
+	###
+	# Writing a product
+	# input: spectral_dict holds the spectral fields
+	#        scalar_dict holds the scalar fields
+	###
+	baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
+	if outputSpectral:
+		spectral_dict = {}
+		for field in outputSpectral.keys():
+			spectral_dict[field] = {'data': eval(outputSpectral[field])}
+	else: spectral_dict = None
 
-    if outputScalar:
-        scalar_dict = {}
-        for field in outputScalar.keys():
-            scalar_dict[field] = {'data': eval(outputScalar[field])}
-    else: scalar_dict = None
+	if outputScalar:
+		scalar_dict = {}
+		for field in outputScalar.keys():
+			scalar_dict[field] = {'data': eval(outputScalar[field])}
+	else: scalar_dict = None
 
-    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
+	write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
 
 	product.closeProductReader()
 
