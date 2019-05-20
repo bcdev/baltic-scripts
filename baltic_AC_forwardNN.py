@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import datetime
 import json
-from keras.models import load_model
+#from keras.models import load_model
 import locale
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,7 +13,8 @@ import sys
 import time
 
 # snappy import
-sys.path.append('/home/cmazeran/.snap/snap-python')
+#sys.path.append('/home/cmazeran/.snap/snap-python')
+sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
@@ -42,613 +43,628 @@ nn_iop_rw = NNffbpAlphaTabFast(nnCode)
 
 # Read NN input range once
 def read_NN_input_ranges_fromFile():
-	input_range = {}
-	with open(nnFilePath) as f:
-		lines = f.readlines()
-		for l in lines:
-			if 'input' in l[:5]:
-				#input  1 is sun_zenith in [0.000010,75.000000]
-				v = [a for a in l.split(' ') if a!='']
-				varname = v[3]
-				r = v[5].split(',')
-				r = (float(r[0][1:]), float(r[1][:-2]))
-				input_range[varname] = r
-	f.close()
-	return input_range
+    input_range = {}
+    with open(nnFilePath) as f:
+        lines = f.readlines()
+        for l in lines:
+            if 'input' in l[:5]:
+                #input  1 is sun_zenith in [0.000010,75.000000]
+                v = [a for a in l.split(' ') if a!='']
+                varname = v[3]
+                r = v[5].split(',')
+                r = (float(r[0][1:]), float(r[1][:-2]))
+                input_range[varname] = r
+    f.close()
+    return input_range
 
 inputRange = read_NN_input_ranges_fromFile()
 
 
 def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
-	##
-	# This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
-	# The fuction returns a numpy array of shape (height, width)
-	##
-	height = product.getSceneRasterHeight()
-	width = product.getSceneRasterWidth()
-	var = np.zeros(width * height, dtype=dtype)
-	if name in list(product.getBandNames()):
-		product.getBand(name).readPixels(0, 0, width, height, var)
-	elif name in list(product.getTiePointGridNames()):
-		product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
-	else:
-		raise Exception('{}: neither a band nor a tie point grid'.format(name))
+    ##
+    # This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
+    # The fuction returns a numpy array of shape (height, width)
+    ##
+    height = product.getSceneRasterHeight()
+    width = product.getSceneRasterWidth()
+    var = np.zeros(width * height, dtype=dtype)
+    if name in list(product.getBandNames()):
+        product.getBand(name).readPixels(0, 0, width, height, var)
+    elif name in list(product.getTiePointGridNames()):
+      #  product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
+        #product.getTiePointGrid(name).getPixels(0, 0, width, height, var)
+        var.shape = (height, width)
+        for i in range(height):
+            for j in range(width):
+                var[i, j] = product.getTiePointGrid(name).getPixelDouble(i, j)
+        var.shape = (height*width)
+    else:
+        raise Exception('{}: neither a band nor a tie point grid'.format(name))
 
-	if reshape:
-		var.shape = (height, width)
+    if reshape:
+        var.shape = (height, width)
 
-	return var
+    return var
 
 def Level1_Reader(product, sensor, band_group='radiance', reshape=True):
-	input_label = []
-	if sensor == 'S2':
-		input_label = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
-	elif sensor == 'OLCI':
-		if band_group == 'radiance':
-			input_label = ["Oa%02d_radiance"%(i+1) for i in range(21)]
-		elif band_group == 'solar_flux':
-			input_label = ["solar_flux_band_%d"%(i+1) for i in range(21)]
-		elif band_group == 'lambda0':
-			input_label = ["lambda0_band_%d"%(i+1) for i in range(21)]
+    input_label = []
+    if sensor == 'S2':
+        input_label = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
+    elif sensor == 'OLCI':
+        if band_group == 'radiance':
+            input_label = ["Oa%02d_radiance"%(i+1) for i in range(21)]
+        elif band_group == 'solar_flux':
+            input_label = ["solar_flux_band_%d"%(i+1) for i in range(21)]
+        elif band_group == 'lambda0':
+            input_label = ["lambda0_band_%d"%(i+1) for i in range(21)]
 
-	# Initialise and read all bands contained in input_label (pixel x band)
-	height = product.getSceneRasterHeight()
-	width = product.getSceneRasterWidth()
-	var = np.zeros((width * height, len(input_label)))
-	for i, bn in enumerate(input_label):
-		var[:,i] = get_band_or_tiePointGrid(product, bn, reshape=reshape)
+    # Initialise and read all bands contained in input_label (pixel x band)
+    height = product.getSceneRasterHeight()
+    width = product.getSceneRasterWidth()
+    var = np.zeros((width * height, len(input_label)))
+    for i, bn in enumerate(input_label):
+        var[:,i] = get_band_or_tiePointGrid(product, bn, reshape=reshape)
 
-	return var
+    return var
 
 def get_yday(product,reshape=True):
-	# Get product size
-	height = product.getSceneRasterHeight()
-	width = product.getSceneRasterWidth()
+    # Get product size
+    height = product.getSceneRasterHeight()
+    width = product.getSceneRasterWidth()
 
-	# Get yday of each row
-	dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
-	dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
-	dstart = np.datetime64(dstart)
-	dstop = np.datetime64(dstop)
-	dpix = dstart + (dstop-dstart)/float(height-1.)*np.arange(height)
-	yday = [k.timetuple().tm_yday for k in dpix.astype(datetime.datetime)]
+    # Get yday of each row
+    dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
+    dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
+    dstart = np.datetime64(dstart)
+    dstop = np.datetime64(dstop)
+    dpix = dstart + (dstop-dstart)/float(height-1.)*np.arange(height)
+    yday = [k.timetuple().tm_yday for k in dpix.astype(datetime.datetime)]
 
-	# Apply to all columns
-	yday = np.array(yday*width).reshape(width,height).transpose()
+    # Apply to all columns
+    yday = np.array(yday*width).reshape(width,height).transpose()
 
-	if not reshape:
-		yday = np.ravel(yday)
+    if not reshape:
+        yday = np.ravel(yday)
 
-	return yday
+    return yday
 
 def read_NN_metadata(nnpath):
-	##
-	# read the metadata:
-	# nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
-	meta_fnames = os.listdir(nnpath)
-	meta_fn = [fn for fn in meta_fnames if 'Metadata_' in fn]
-	with open(nnpath + meta_fn[0], "r") as f:
-		d = f.read()
-	training_meta = json.loads(d)
-	f.close()
-	model_fn = [fn for fn in meta_fnames if 'MetadataModel_' in fn]
-	with open(nnpath + model_fn[0], "r") as f:
-		d = f.read()
-	model_meta = json.loads(d)
-	f.close()
-	return training_meta, model_meta
+    ##
+    # read the metadata:
+    # nnpath = 'D:\WORK\IdePix\\NN_training_S2\I13x11x9x6x4x3xO1_sqrt_Radical2TrainingSelection_Relu_NoScaler\\'
+    meta_fnames = os.listdir(nnpath)
+    meta_fn = [fn for fn in meta_fnames if 'Metadata_' in fn]
+    with open(nnpath + meta_fn[0], "r") as f:
+        d = f.read()
+    training_meta = json.loads(d)
+    f.close()
+    model_fn = [fn for fn in meta_fnames if 'MetadataModel_' in fn]
+    with open(nnpath + model_fn[0], "r") as f:
+        d = f.read()
+    model_meta = json.loads(d)
+    f.close()
+    return training_meta, model_meta
 
 def radianceToReflectance_Reader(product, sensor = '', print_info=False):
 
-	if print_info:
-		height = product.getSceneRasterHeight()
-		width = product.getSceneRasterWidth()
-		name = product.getName()
-		description = product.getDescription()
-		band_names = product.getBandNames()
+    if print_info:
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+        name = product.getName()
+        description = product.getDescription()
+        band_names = product.getBandNames()
 
-		print("Sensor:      %s" % sensor)
-		print("Product:     %s, %s" % (name, description))
-		print("Raster size: %d x %d pixels" % (width, height))
-		print("Start time:  " + str(product.getStartTime()))
-		print("End time:    " + str(product.getEndTime()))
-		print("Bands:       %s" % (list(band_names)))
+        print("Sensor:      %s" % sensor)
+        print("Product:     %s, %s" % (name, description))
+        print("Raster size: %d x %d pixels" % (width, height))
+        print("Start time:  " + str(product.getStartTime()))
+        print("End time:    " + str(product.getEndTime()))
+        print("Bands:       %s" % (list(band_names)))
 
-	if sensor == 'OLCI':
-		rad = Level1_Reader(product, sensor, band_group='radiance',reshape=False)
-		solar_flux = Level1_Reader(product, sensor, band_group='solar_flux',reshape=False)
-		SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
-		refl = rad * np.pi / (solar_flux * np.cos(SZA.reshape(rad.shape[0],1)*np.pi/180.))
-	elif sensor == 'S2':
-		refl = Level1_Reader(product, sensor,reshape=False)
+    if sensor == 'OLCI':
+        rad = Level1_Reader(product, sensor, band_group='radiance',reshape=False)
+        solar_flux = Level1_Reader(product, sensor, band_group='solar_flux',reshape=False)
+        SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
+        refl = rad * np.pi / (solar_flux * np.cos(SZA.reshape(rad.shape[0],1)*np.pi/180.))
+    elif sensor == 'S2':
+        refl = Level1_Reader(product, sensor,reshape=False)
 
-	return refl
+    return refl
 
 def angle_Reader(product, sensor):
-	if sensor == 'OLCI':
-		oaa = get_band_or_tiePointGrid(product, 'OAA', reshape=False)
-		oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False)
-		saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False)
-		sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
-	# elif sensor == 'S2': TODO
+    if sensor == 'OLCI':
+        oaa = get_band_or_tiePointGrid(product, 'OAA', reshape=False)
+        oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False)
+        saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False)
+        sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
+    # elif sensor == 'S2': TODO
 
-	return oaa, oza, saa, sza
+    return oaa, oza, saa, sza
 
 def calculate_diff_azim(oaa, saa):
-	###
-	# azimuth difference as input to the NN is defined in a range between 0° and 180°
+    ###
+    # azimuth difference as input to the NN is defined in a range between 0° and 180°
 
-	raa = np.array(oaa - saa)
-	ID = np.array( raa < 0)
-	if np.sum(ID)>0.:
-			raa[ID] = 360. + raa[ID]
-	ID = np.array(raa > 180.)
-	if np.sum(ID)>0.:
-			raa[ID] = raa[ID] -180.
+    raa = np.array(oaa - saa)
+    ID = np.array( raa < 0)
+    if np.sum(ID)>0.:
+            raa[ID] = 360. + raa[ID]
+    ID = np.array(raa > 180.)
+    if np.sum(ID)>0.:
+            raa[ID] = raa[ID] -180.
 
-	return raa
+    return raa
 
 
 def check_valid_pixel_expression_L1(product, sensor):
-	if sensor == 'OLCI':
-		height = product.getSceneRasterHeight()
-		width = product.getSceneRasterWidth()
-		quality_flags = np.zeros(width * height, dtype='uint32')
-		product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
+    if sensor == 'OLCI':
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+        quality_flags = np.zeros(width * height, dtype='uint32')
+        product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
 
-		# Masks OLCI L1
-		## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
-		## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
-		invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
-		land_mask = (np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31) | \
-								(np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30)
-								#(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
-		bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
+        # Masks OLCI L1
+        ## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
+        ## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
+        invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
+        land_mask = (np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31) | \
+                                (np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30)
+                                #(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
+        bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
 
-		invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
-		valid_pixel_flag = np.logical_not(invalid_mask)
+        invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
+        valid_pixel_flag = np.logical_not(invalid_mask)
 
-	elif sensor == 'S2':
-		#TODO: set valid pixel expression L1C S2
-		height = product.getSceneRasterHeight()
-		width = product.getSceneRasterWidth()
-		valid_pixel_flag = np.ones(width * height, dtype='uint32')
+        # for inland water.
+        inland_water = np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29
 
-	return valid_pixel_flag
+        valid_pixel_flag = np.logical_or(valid_pixel_flag, inland_water)
+
+
+    elif sensor == 'S2':
+        #TODO: set valid pixel expression L1C S2
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+        valid_pixel_flag = np.ones(width * height, dtype='uint32')
+
+
+    return valid_pixel_flag
 
 def apply_forwardNN_IOP_to_rhow_keras(X, sensor):
-	start_time = time.time()
-	###
-	# read keras NN + metadata
-	NN_path = '...'  # full path to NN file.
-	metaNN_path = '...'  # folder with metadata files from training
-	model = load_model(NN_path)
-	training_meta, model_meta = read_NN_metadata(metaNN_path)
+    start_time = time.time()
+    ###
+    # read keras NN + metadata
+    NN_path = '...'  # full path to NN file.
+    metaNN_path = '...'  # folder with metadata files from training
+    model = load_model(NN_path)
+    training_meta, model_meta = read_NN_metadata(metaNN_path)
 
-	X_trans = np.copy(X)
-	###
-	# transformation of input data
-	transform_method = training_meta['transformation_method']
-	if transform_method == 'sqrt':
-		X_trans = np.sqrt(X_trans)
-	elif transform_method == 'log':
-		X_trans = np.log10(X_trans)
+    X_trans = np.copy(X)
+    ###
+    # transformation of input data
+    transform_method = training_meta['transformation_method']
+    if transform_method == 'sqrt':
+        X_trans = np.sqrt(X_trans)
+    elif transform_method == 'log':
+        X_trans = np.log10(X_trans)
 
-	###
-	if model_meta['scaling']:
-		scaler_path = os.listdir(metaNN_path)
-		scaler_path = [sp for sp in scaler_path if 'scaling' in sp][0]
-		print(scaler_path)
-		scaler = pd.read_csv(metaNN_path + '/' + scaler_path, header=0, sep="\t", index_col=0)
-		for i in range(X.shape[1]):
-			X_trans[:, i] = (X_trans[:, i] - scaler['mean'].loc[i]) / scaler['var'].loc[i]
+    ###
+    if model_meta['scaling']:
+        scaler_path = os.listdir(metaNN_path)
+        scaler_path = [sp for sp in scaler_path if 'scaling' in sp][0]
+        print(scaler_path)
+        scaler = pd.read_csv(metaNN_path + '/' + scaler_path, header=0, sep="\t", index_col=0)
+        for i in range(X.shape[1]):
+            X_trans[:, i] = (X_trans[:, i] - scaler['mean'].loc[i]) / scaler['var'].loc[i]
 
-	###
-	# Application of the NN to the data.
-	prediction = model.predict(X_trans)
-	print(len(prediction.shape))
+    ###
+    # Application of the NN to the data.
+    prediction = model.predict(X_trans)
+    print(len(prediction.shape))
 
-	print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
-	return prediction
+    print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
+    return prediction
 
 def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, T=15, S=35, nn=''):
-	"""
-	Apply the forwardNN: IOP to rhow
-	input: numpy array iop, shape = (Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
-			np.array sza, shape = (Npixels,)
-			np.array oza, shape = (Npixels,)
-			np.array raa, shape = (Npixels,); range: 0-180
-	returns: np.array rhow, shape = (Npixels, wavelengths)
+    """
+    Apply the forwardNN: IOP to rhow
+    input: numpy array iop, shape = (Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
+            np.array sza, shape = (Npixels,)
+            np.array oza, shape = (Npixels,)
+            np.array raa, shape = (Npixels,); range: 0-180
+    returns: np.array rhow, shape = (Npixels, wavelengths)
 
-	T, S: currently constant #TODO take ECMWF temperature at sea surface?
-	valid ranges can be found at the beginning of the .net-file.
+    T, S: currently constant #TODO take ECMWF temperature at sea surface?
+    valid ranges can be found at the beginning of the .net-file.
 
-	NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
-	"""
+    NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    """
 
-	# Initialise output
-	nBands = None
-	if sensor == 'OLCI':
-		nBands=12
-	#elif sensor == 'S2' TODO
-	output = np.zeros((iop.shape[0], nBands)) + np.NaN
+    # Initialise output
+    nBands = None
+    if sensor == 'OLCI':
+        nBands=12
+    #elif sensor == 'S2' TODO
+    output = np.zeros((iop.shape[0], nBands)) + np.NaN
 
-	###
-	# Launch the NN
-	# Important: input array has to be of size 10: [SZA, VZA, RAA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-	inputNN = np.zeros(10)
-	inputNN[3] = T
-	inputNN[4] = S
-	for i in range(iop.shape[0]):
-		if valid_data[i]:
-			inputNN[0] = sun_zenith[i]
-			inputNN[1] = view_zenith[i]
-			inputNN[2] = diff_azimuth[i]
-			for j in range(iop.shape[1]): # log_apig, log_adet, log a_gelb, log_bpart, log_bwit
-				inputNN[j+5] = iop[i, j]
-			log_rw_nn2 = np.array(nn_iop_rw.calc(inputNN), dtype=np.float32)
-			output[i, :] = np.exp(log_rw_nn2)
+    ###
+    # Launch the NN
+    # Important: input array has to be of size 10: [SZA, VZA, RAA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+    inputNN = np.zeros(10)
+    inputNN[3] = T
+    inputNN[4] = S
+    for i in range(iop.shape[0]):
+        if valid_data[i]:
+            inputNN[0] = sun_zenith[i]
+            inputNN[1] = view_zenith[i]
+            inputNN[2] = diff_azimuth[i]
+            for j in range(iop.shape[1]): # log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+                inputNN[j+5] = iop[i, j]
+            log_rw_nn2 = np.array(nn_iop_rw.calc(inputNN), dtype=np.float32)
+            output[i, :] = np.exp(log_rw_nn2)
 
 
-	# #// (9.5.4)
-	# #check if log_IOPs out of range
-	# mi = nn_rw_iop.getOutmin();
-	# ma = nn_rw_iop.getOutmax();
-	# boolean iop_oor_flag = false;
-	# for (int iv = 0; iv < log_iops_nn1.length; iv++) {
-	# 	if (log_iops_nn1[iv] < mi[iv] | log_iops_nn1[iv] > ma[iv]) {
-	# 		iop_oor_flag = true;
-	# 	}
-	# }
-	# flags = BitSetter.setFlag(flags, FLAG_INDEX_IOP_OOR, iop_oor_flag);
-	#
-	# #// (9.5.5)
-	# # check if log_IOPs	at limit
-	# int firstIopMaxFlagIndex = FLAG_INDEX_APIG_AT_MAX;
-	# for (int i = 0; i < log_iops_nn1.length; i++) {
-	# 	final boolean iopAtMax = log_iops_nn1[i] > (ma[i] - log_threshfak_oor);
-	# 	flags = BitSetter.setFlag(flags, i + firstIopMaxFlagIndex, iopAtMax);
-	# }
-	#
-	# int	firstIopMinFlagIndex = FLAG_INDEX_APIG_AT_MIN;
-	# for (int i = 0; i < log_iops_nn1.length; i++) {
-	# 	final boolean iopAtMin = log_iops_nn1[i] < (mi[i] + log_threshfak_oor);
-	# 	flags = BitSetter.setFlag(flags, i + firstIopMinFlagIndex, iopAtMin);
-	# }
-	#
-	#
+    # #// (9.5.4)
+    # #check if log_IOPs out of range
+    # mi = nn_rw_iop.getOutmin();
+    # ma = nn_rw_iop.getOutmax();
+    # boolean iop_oor_flag = false;
+    # for (int iv = 0; iv < log_iops_nn1.length; iv++) {
+    # 	if (log_iops_nn1[iv] < mi[iv] | log_iops_nn1[iv] > ma[iv]) {
+    # 		iop_oor_flag = true;
+    # 	}
+    # }
+    # flags = BitSetter.setFlag(flags, FLAG_INDEX_IOP_OOR, iop_oor_flag);
+    #
+    # #// (9.5.5)
+    # # check if log_IOPs	at limit
+    # int firstIopMaxFlagIndex = FLAG_INDEX_APIG_AT_MAX;
+    # for (int i = 0; i < log_iops_nn1.length; i++) {
+    # 	final boolean iopAtMax = log_iops_nn1[i] > (ma[i] - log_threshfak_oor);
+    # 	flags = BitSetter.setFlag(flags, i + firstIopMaxFlagIndex, iopAtMax);
+    # }
+    #
+    # int	firstIopMinFlagIndex = FLAG_INDEX_APIG_AT_MIN;
+    # for (int i = 0; i < log_iops_nn1.length; i++) {
+    # 	final boolean iopAtMin = log_iops_nn1[i] < (mi[i] + log_threshfak_oor);
+    # 	flags = BitSetter.setFlag(flags, i + firstIopMinFlagIndex, iopAtMin);
+    # }
+    #
+    #
 
-	return output
+    return output
 
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
-	# Initialise the output product
-	File = jpy.get_type('java.io.File')
-	width = product.getSceneRasterWidth()
-	height = product.getSceneRasterHeight()
-	bandShape = (height, width)
+    # Initialise the output product
+    File = jpy.get_type('java.io.File')
+    width = product.getSceneRasterWidth()
+    height = product.getSceneRasterHeight()
+    bandShape = (height, width)
 
-	balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-	balticPACProduct.setFileLocation(File(baltic__product_path))
+    balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
+    balticPACProduct.setFileLocation(File(baltic__product_path))
 
-	ProductUtils.copyGeoCoding(product, balticPACProduct)
-	ProductUtils.copyTiePointGrids(product, balticPACProduct)
+    ProductUtils.copyGeoCoding(product, balticPACProduct)
+    ProductUtils.copyTiePointGrids(product, balticPACProduct)
 
-	# Define total number of bands (TOA)
-	if (sensor == 'OLCI'):
-		nbands = 21
-	#elif (sensor == 'S2'): TODO
+    # Define total number of bands (TOA)
+    if (sensor == 'OLCI'):
+        nbands = 21
+    #elif (sensor == 'S2'): TODO
 
-	# Get TOA radiance sources for spectral band properties
-	bsources = [product.getBand("Oa%02d_radiance"%(i+1)) for i in range(nbands)]
+    # Get TOA radiance sources for spectral band properties
+    bsources = [product.getBand("Oa%02d_radiance"%(i+1)) for i in range(nbands)]
 
-	# Create empty bands for spectral fields (note: number of spectral bands may differ)
-	for key in spectral_dict.keys():
-		data = spectral_dict[key].get('data')
-		if not data is None:
-			nbands_key = data.shape[-1]
-			for i in range(nbands_key):
-				brtoa_name = key + "_" + str(i + 1)
-				rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
-				ProductUtils.copySpectralBandProperties(bsources[i], rtoaBand)
-				rtoaBand.setNoDataValue(np.nan)
-				rtoaBand.setNoDataValueUsed(True)
+    # Create empty bands for spectral fields (note: number of spectral bands may differ)
+    for key in spectral_dict.keys():
+        data = spectral_dict[key].get('data')
+        if not data is None:
+            nbands_key = data.shape[-1]
+            for i in range(nbands_key):
+                brtoa_name = key + "_" + str(i + 1)
+                rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
+                ProductUtils.copySpectralBandProperties(bsources[i], rtoaBand)
+                rtoaBand.setNoDataValue(np.nan)
+                rtoaBand.setNoDataValueUsed(True)
 
-	# Set auto grouping
-	autoGroupingString = ':'.join(spectral_dict.keys())
-	balticPACProduct.setAutoGrouping(autoGroupingString)
+    # Set auto grouping
+    autoGroupingString = ':'.join(spectral_dict.keys())
+    balticPACProduct.setAutoGrouping(autoGroupingString)
 
-	# Create empty bands for scalar fields
-	if not scalar_dict is None:
-		for key in scalar_dict.keys():
-			singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
-			singleBand.setNoDataValue(np.nan)
-			singleBand.setNoDataValueUsed(True)
+    # Create empty bands for scalar fields
+    if not scalar_dict is None:
+        for key in scalar_dict.keys():
+            singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
 
-	# Initialise writer
-	writer = ProductIO.getProductWriter('BEAM-DIMAP')
-	balticPACProduct.setProductWriter(writer)
-	balticPACProduct.writeHeader(baltic__product_path)
-	writer.writeProductNodes(balticPACProduct, baltic__product_path)
+    # Initialise writer
+    writer = ProductIO.getProductWriter('BEAM-DIMAP')
+    balticPACProduct.setProductWriter(writer)
+    balticPACProduct.writeHeader(baltic__product_path)
+    writer.writeProductNodes(balticPACProduct, baltic__product_path)
 
-	# Write Latitude, Longitude explicitly
-	geoBand = balticPACProduct.getBand('longitude')
-	geoBand.writeRasterDataFully()
-	geoBand = balticPACProduct.getBand('latitude')
-	geoBand.writeRasterDataFully()
-	# Write Latitude, Longitude explicitly
-	"""geoBand = balticPACProduct.getBand('longitude')
-	geoBand.writeRasterDataFully()
-	geoBand = balticPACProduct.getBand('latitude')
-	geoBand.writeRasterDataFully()"""
+    # Write Latitude, Longitude explicitly
+    geoBand = balticPACProduct.getBand('longitude')
+    geoBand.writeRasterDataFully()
+    geoBand = balticPACProduct.getBand('latitude')
+    geoBand.writeRasterDataFully()
 
-	# Write data of spectral fields
-	for key in spectral_dict.keys():
-		data = spectral_dict[key].get('data')
-		if not data is None:
-			nbands_key = data.shape[-1]
-			for i in range(nbands_key):
-				brtoa_name = key + "_" + str(i + 1)
-				rtoaBand = balticPACProduct.getBand(brtoa_name)
-				out = np.array(data[:, i]).reshape(bandShape)
-				rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-																		 ProgressMonitor.NULL)
+    # Write data of spectral fields
+    for key in spectral_dict.keys():
+        data = spectral_dict[key].get('data')
+        if not data is None:
+            nbands_key = data.shape[-1]
+            for i in range(nbands_key):
+                brtoa_name = key + "_" + str(i + 1)
+                rtoaBand = balticPACProduct.getBand(brtoa_name)
+                out = np.array(data[:, i]).reshape(bandShape)
+                rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+                                                                         ProgressMonitor.NULL)
 
-	# Write data of scalar fields
-	if not scalar_dict is None:
-		for key in scalar_dict.keys():
-			data = scalar_dict[key].get('data')
-			if not data is None:
-				singleBand = balticPACProduct.getBand(key)
-				out = np.array(data).reshape(bandShape)
-				singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-																		 ProgressMonitor.NULL)
+    # Write data of scalar fields
+    if not scalar_dict is None:
+        for key in scalar_dict.keys():
+            data = scalar_dict[key].get('data')
+            if not data is None:
+                singleBand = balticPACProduct.getBand(key)
+                out = np.array(data).reshape(bandShape)
+                singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+                                                                         ProgressMonitor.NULL)
 
-	# # Create flag coding
-	# raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
-	# raycorFlagCoding = FlagCoding('raycor_flags')
-	# raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
-	# raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
-	# group = balticPACProduct.getFlagCodingGroup()
-	# group.add(raycorFlagCoding)
-	# raycorFlagsBand.setSampleCoding(raycorFlagCoding)
+    # # Create flag coding
+    # raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
+    # raycorFlagCoding = FlagCoding('raycor_flags')
+    # raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
+    # raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
+    # group = balticPACProduct.getFlagCodingGroup()
+    # group.add(raycorFlagCoding)
+    # raycorFlagsBand.setSampleCoding(raycorFlagCoding)
 
-	balticPACProduct.closeIO()
+    balticPACProduct.closeIO()
+
 
 def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp):
-	"""
-	Compute matrices associated to the polynomial modelling of the atmosphere (POLYMER)
-	Care: direct matrice (forward model) is for 'bands_sat', while inverse (backward model) is limited to 'bands'
-	"""
+    """
+    Compute matrices associated to the polynomial modelling of the atmosphere (POLYMER)
+    Care: direct matrice (forward model) is for 'bands_sat', while inverse (backward model) is limited to 'bands'
+    """
 
-	# Define matrix of polynomial modelling (c0 T0 + c1 lambda^-1 + c2 rho_R)
-	ncoef = 3
-	nband = len(bands)
-	nband_sat = len(bands_sat)
-	npix = rho_g.shape[0]
-	Aatm = np.zeros((npix, nband_sat, ncoef), dtype='float32') # Care, defined for bands_sat
-	Aatm_inv = np.zeros((npix, ncoef, nband), dtype='float32') # Care, defined for only bands
+    # Define matrix of polynomial modelling (c0 T0 + c1 lambda^-1 + c2 rho_R)
+    ncoef = 3
+    nband = len(bands)
+    nband_sat = len(bands_sat)
+    npix = rho_g.shape[0]
+    Aatm = np.zeros((npix, nband_sat, ncoef), dtype='float32') # Care, defined for bands_sat
+    Aatm_inv = np.zeros((npix, ncoef, nband), dtype='float32') # Care, defined for only bands
 
-	# Indices of bands_corr in all bands
-	iband = np.searchsorted(bands_sat, bands)
+    # Indices of bands_corr in all bands
+    iband = np.searchsorted(bands_sat, bands)
 
-	# Compute T0
-	taum = adf_ppp.tau_ray #TODO use per-pixel wavelength
-	air_mass = 1./np.cos(np.radians(sza))+1./np.cos(np.radians(oza))
-	rho_g0 = 0.02
-	factor = (1-0.5*np.exp(-rho_g/rho_g0))*air_mass
-	T0 = np.exp(-taum*factor[:,None])
+    # Compute T0
+    taum = adf_ppp.tau_ray #TODO use per-pixel wavelength
+    air_mass = 1./np.cos(np.radians(sza))+1./np.cos(np.radians(oza))
+    rho_g0 = 0.02
+    factor = (1-0.5*np.exp(-rho_g/rho_g0))*air_mass
+    T0 = np.exp(-taum*factor[:,None])
 
-	Aatm[:,:,0] = T0
-	Aatm[:,:,1] = (wavelength/1000.)**-1.
-	Aatm[:,:,2] = rho_r
+    Aatm[:,:,0] = T0
+    Aatm[:,:,1] = (wavelength/1000.)**-1.
+    Aatm[:,:,2] = rho_r
 
-	# Compute pseudo inverse: A* = ((A'.A)^(-1)).A' /!\ limited to bands
-	Aatm_corr = Aatm[:,iband,:]
-	Aatm_inv[valid] = np.linalg.pinv(Aatm_corr[valid])
+    # Compute pseudo inverse: A* = ((A'.A)^(-1)).A' /!\ limited to bands
+    Aatm_corr = Aatm[:,iband,:]
+    Aatm_inv[valid] = np.linalg.pinv(Aatm_corr[valid])
 
-	return Aatm, Aatm_inv
+    return Aatm, Aatm_inv
 
 def check_and_constrain_iop(iop):
-	for i, varn in enumerate(['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']):
-		mi = inputRange[varn][0]
-		ma = inputRange[varn][1]
-		if iop[i] < mi:
-			iop[i] = mi
-		if iop[i] > ma:
-			iop[i] = ma
-	return iop
+    for i, varn in enumerate(['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']):
+        mi = inputRange[varn][0]
+        ma = inputRange[varn][1]
+        if iop[i] < mi:
+            iop[i] = mi
+        if iop[i] > ma:
+            iop[i] = ma
+    return iop
 
 
 def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
-	"""
-	Cost function to be minimized, define for one pixel
-	"""
+    """
+    Cost function to be minimized, define for one pixel
+    """
 
-	# Compute rhow_mod
-	rho_wmod = np.zeros(nbands) + np.NaN
+    # Compute rhow_mod
+    rho_wmod = np.zeros(nbands) + np.NaN
 
-	# Check iop range and apply constraints to forwardNN input range
-	iop = check_and_constrain_iop(iop)
+    # Check iop range and apply constraints to forwardNN input range
+    iop = check_and_constrain_iop(iop)
 
-	rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
-	# Compute rho_ag and fit best atmospheric model
-	rho_ag = rho_rc - td*rho_wmod
-	coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
-	rho_ag_mod  = np.einsum('...ij,...j->...i',Aatm,coefs)
-	# Compute rho_w
-	rho_w = (rho_rc - rho_ag_mod)/td
-	# Compute residual and chi2
-	res  = rho_w[iband_NN]-rho_wmod[iband_NN] # TODO one other option is to minimize at TOA by multiplying by td
-	chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
-	return chi2
+    rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
+    # Compute rho_ag and fit best atmospheric model
+    rho_ag = rho_rc - td*rho_wmod
+    coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
+    rho_ag_mod  = np.einsum('...ij,...j->...i',Aatm,coefs)
+    # Compute rho_w
+    rho_w = (rho_rc - rho_ag_mod)/td
+    # Compute residual and chi2
+    res  = rho_w[iband_NN]-rho_wmod[iband_NN] # TODO one other option is to minimize at TOA by multiplying by td
+    chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
+    return chi2
 
-def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None):
-	"""
-	Main function to run the Baltic+ AC based on forward NN
-	"""
+def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None, correction='IPF'):
+    """
+    Main function to run the Baltic+ AC based on forward NN
+    """
 
-        # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
-        correction = 'HYGEOS'
+    # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
+    #correction = 'HYGEOS'
+    #correction = 'IPF'
 
-	# Get sensor & AC bands
-	bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
-	nbands = len(bands_sat)
-	iband_corr = np.searchsorted(bands_sat, bands_corr)
-	bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754] #TODO put in get_bands and adapt with sensor
-	iband_NN = np.searchsorted(bands_sat, bands_forwardNN)
-	bands_abs = [760,764,767,900,940] #TODO put in get_bands and adapt with sensor
-	iband_abs = np.searchsorted(bands_sat, bands_abs)
+    # Get sensor & AC bands
+    bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
+    nbands = len(bands_sat)
+    iband_corr = np.searchsorted(bands_sat, bands_corr)
+    bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754] #TODO put in get_bands and adapt with sensor
+    iband_NN = np.searchsorted(bands_sat, bands_forwardNN)
+    bands_abs = [760,764,767,900,940] #TODO put in get_bands and adapt with sensor
+    iband_abs = np.searchsorted(bands_sat, bands_abs)
 
-	# Initialising a product for Reading with snappy
-	product = snp.ProductIO.readProduct(os.path.join(scene_path,filename))
-	width = product.getSceneRasterWidth()
-	height = product.getSceneRasterHeight()
-	npix = width*height
+    # Initialising a product for Reading with snappy
+    product = snp.ProductIO.readProduct(os.path.join(scene_path,filename))
+    width = product.getSceneRasterWidth()
+    height = product.getSceneRasterHeight()
+    npix = width*height
 
-	# Read L1B product and convert Radiance to reflectance
-	rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
+    # Read L1B product and convert Radiance to reflectance
+    rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
 
-	# Classify pixels with Level-1 flags
-	valid = check_valid_pixel_expression_L1(product, sensor)
+    # Classify pixels with Level-1 flags
+    valid = check_valid_pixel_expression_L1(product, sensor)
 
-	# Limit processing to sub-box
-	if subset:
-		sline,eline,scol,ecol = subset
-		valid_subset = np.zeros((height,width),dtype='bool')
-		valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
-		valid = valid_subset.reshape(height*width)
-		del valid_subset
+    # Limit processing to sub-box
+    if subset:
+        sline,eline,scol,ecol = subset
+        valid_subset = np.zeros((height,width),dtype='bool')
+        valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
+        print('subset, valid:', np.nansum(valid_subset))
+        valid = valid_subset.reshape(height*width)
+        del valid_subset
 
-	# Read geometry and compute relative azimuth angle
-	oaa, oza, saa, sza = angle_Reader(product, sensor)
-	raa = calculate_diff_azim(oaa, saa)
+    # Read geometry and compute relative azimuth angle
+    oaa, oza, saa, sza = angle_Reader(product, sensor)
+    raa = calculate_diff_azim(oaa, saa)
 
-	# Read latitude, longitude
-	latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
-	longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
+    # Read latitude, longitude
+    latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
+    longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
 
-	# Read per-pixel wavelength
-	wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
+    # Read per-pixel wavelength
+    wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
 
-	# Read day in the year
-	yday = get_yday(product, reshape=False)
+    # Read day in the year
+    yday = get_yday(product, reshape=False)
 
-	# Read meteo data
-	pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
-	ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
-	tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
-	wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
-	wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
-	windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
+    # Read meteo data
+    pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
+    ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
+    tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
+    wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
+    wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
+    windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
 
-	# Read LUTs
-	if sensor == 'OLCI':
-		file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-		file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-		file_adf_clp = default_ADF['OLCI']['file_adf_clp']
-		adf_acp = luts_olci.LUT_ACP(file_adf_acp)
-		adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
-		adf_clp = luts_olci.LUT_CLP(file_adf_clp)
-	#elif sensor == 'S2' TODO
+    # Read LUTs
+    if sensor == 'OLCI':
+        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
+        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
+        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
+        adf_acp = luts_olci.LUT_ACP(file_adf_acp)
+        adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
+        adf_clp = luts_olci.LUT_CLP(file_adf_clp)
+    #elif sensor == 'S2' TODO
 
-	print("Pre-corrections")
-	# Gaseous correction
-	rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
-			pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
+    print("Pre-corrections")
+    # Gaseous correction
+    rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
+            pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
 
-	# Compute diffuse transmittance (Rayleigh)
-	td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
+    # Compute diffuse transmittance (Rayleigh)
+    td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
 
-	# Glint correction
-	rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    # Glint correction
+    rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
 
-        if correction == 'IPF':
-            # Glint correction
-            rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    if correction == 'IPF':
+        # Glint correction
+        rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
 
-            # White-caps correction
-            #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+        # White-caps correction
+        #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
 
-            # Rayleigh correction
-            rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
-    
-        elif correction == 'HYGEOS':
-            # Glint correction - required only to get rho_g in the AC
-            rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+        # Rayleigh correction
+        rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
 
-            # Glint + Rayleigh correction
-            rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
+    elif correction == 'HYGEOS':
+        # Glint correction - required only to get rho_g in the AC
+        rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
 
-	# Atmospheric model
-	print("Compute atmospheric matrices")
-	Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
+        LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
+        # Glint + Rayleigh correction
+        rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
+        #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+        #													  pressure, windm, lut_hygeos)
 
-	# Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-	print("Inversion")
-	niop = 5
-	iop = np.zeros((npix,niop)) + np.NaN
-	percent_old = 0
-	ipix_proc = 0
-	npix_proc = np.count_nonzero(valid)
-	for ipix in range(npix):
-		if not valid[ipix]: continue
-		# Display processing progress with respect to the valid pixels
-		percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
-		if percent != percent_old:
-			percent_old = percent
-			sys.stdout.write(" ...%d%%"%percent)
-			sys.stdout.flush()
-		# First guess
-		#iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-		iop_0 = np.array([-3., -3., -3., -3., -3.])
-		# Nelder-Mead optimization
-		args_pix = (sensor, nbands, iband_NN, iband_corr, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-		NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
-		iop[ipix,:] = NM_res.x
-		#success = NM_res.success TODO add a flag in the Level-2 output to get this info
-		ipix_proc += 1
-	print("")
 
-	# Compute the final residual
-	print("Compute final residual")
-	rho_wmod = np.zeros((npix, nbands)) + np.NaN
-	rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
-	rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
-	rho_ag = rho_rc - td*rho_wmod
-	coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
-	rho_ag_mod[valid]  = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
-	rho_w = (rho_rc - rho_ag_mod)/td
+    # Atmospheric model
+    print("Compute atmospheric matrices")
+    Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
-	# Set absorption band to NaN
-	rho_w[:,iband_abs] = np.NaN
+    # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+    print("Inversion")
+    niop = 5
+    iop = np.zeros((npix,niop)) + np.NaN
+    percent_old = 0
+    ipix_proc = 0
+    npix_proc = np.count_nonzero(valid)
+    for ipix in range(npix):
+        if not valid[ipix]: continue
+        # Display processing progress with respect to the valid pixels
+        percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
+        if percent != percent_old:
+            percent_old = percent
+            sys.stdout.write(" ...%d%%"%percent)
+            sys.stdout.flush()
+        # First guess
+        #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
+        iop_0 = np.array([-3., -3., -3., -3., -3.])
+        # Nelder-Mead optimization
+        args_pix = (sensor, nbands, iband_NN, iband_corr, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
+        iop[ipix,:] = NM_res.x
+        #success = NM_res.success TODO add a flag in the Level-2 output to get this info
+        ipix_proc += 1
+    print("")
 
-	# TODO Normalisation
-	# rho_wn =
+    # Compute the final residual
+    print("Compute final residual")
+    rho_wmod = np.zeros((npix, nbands)) + np.NaN
+    rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
+    rho_ag = rho_rc - td*rho_wmod
+    coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
+    rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
+    rho_w = (rho_rc - rho_ag_mod)/td
 
-	# TODO uncertainties
-	# unc_rhow =
+    # Set absorption band to NaN
+    rho_w[:,iband_abs] = np.NaN
 
-	###
-	# Writing a product
-	# input: spectral_dict holds the spectral fields
-	#        scalar_dict holds the scalar fields
-	###
-	baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
-	if outputSpectral:
-		spectral_dict = {}
-		for field in outputSpectral.keys():
-			spectral_dict[field] = {'data': eval(outputSpectral[field])}
-	else: spectral_dict = None
+    # TODO Normalisation
+    # rho_wn =
 
-	if outputScalar:
-		scalar_dict = {}
-		for field in outputScalar.keys():
-			scalar_dict[field] = {'data': eval(outputScalar[field])}
-	else: scalar_dict = None
+    # TODO uncertainties
+    # unc_rhow =
 
-	write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
+    ###
+    # Writing a product
+    # input: spectral_dict holds the spectral fields
+    #        scalar_dict holds the scalar fields
+    ###
+    baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
+    if outputSpectral:
+        spectral_dict = {}
+        for field in outputSpectral.keys():
+            spectral_dict[field] = {'data': eval(outputSpectral[field])}
+    else: spectral_dict = None
 
-	product.closeProductReader()
+    if outputScalar:
+        scalar_dict = {}
+        for field in outputScalar.keys():
+            scalar_dict[field] = {'data': eval(outputScalar[field])}
+    else: scalar_dict = None
+
+    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
+
+    product.closeProductReader()
 
 
 
