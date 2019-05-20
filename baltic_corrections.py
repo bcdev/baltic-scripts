@@ -187,12 +187,12 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
     tau_ray = np.zeros(rho_ng.shape)
 
     # Compute Rayleigh optical thickness from Bodhaine
-    co2 = 400
+    co2 = 400.
     altitude = 0.
     for i in range(tau_ray.shape[1]):
         tau_ray[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
 
-    # Compiute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
+    # Compute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
     axes = [LUT.muv, LUT.raa, LUT.mus, LUT.tau, LUT.wind]
     for i in range(tau_ray.shape[1]):
         x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i], windm]
