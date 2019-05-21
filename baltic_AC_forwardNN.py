@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import datetime
 import json
-#from keras.models import load_model
+from keras.models import load_model
 import locale
 import matplotlib.pyplot as plt
 import numpy as np
@@ -215,17 +215,11 @@ def check_valid_pixel_expression_L1(product, sensor):
         invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
         valid_pixel_flag = np.logical_not(invalid_mask)
 
-        # for inland water.
-        inland_water = np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29
-
-        valid_pixel_flag = np.logical_or(valid_pixel_flag, inland_water)
-
-
-    elif sensor == 'S2':
-        #TODO: set valid pixel expression L1C S2
-        height = product.getSceneRasterHeight()
-        width = product.getSceneRasterWidth()
-        valid_pixel_flag = np.ones(width * height, dtype='uint32')
+	elif sensor == 'S2':
+		#TODO: set valid pixel expression L1C S2
+		height = product.getSceneRasterHeight()
+		width = product.getSceneRasterWidth()
+		valid_pixel_flag = np.ones(width * height, dtype='uint32')
 
 
     return valid_pixel_flag
@@ -553,15 +547,17 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
     windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
 
-    # Read LUTs
-    if sensor == 'OLCI':
-        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
-        adf_acp = luts_olci.LUT_ACP(file_adf_acp)
-        adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
-        adf_clp = luts_olci.LUT_CLP(file_adf_clp)
-    #elif sensor == 'S2' TODO
+	# Read LUTs
+	if sensor == 'OLCI':
+		file_adf_acp = default_ADF['OLCI']['file_adf_acp']
+		file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
+		file_adf_clp = default_ADF['OLCI']['file_adf_clp']
+		adf_acp = luts_olci.LUT_ACP(file_adf_acp)
+		adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
+		adf_clp = luts_olci.LUT_CLP(file_adf_clp)
+                if correction == 'HYGEOS':
+                    LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
+	#elif sensor == 'S2' TODO
 
     print("Pre-corrections")
     # Gaseous correction
