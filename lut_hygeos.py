@@ -35,12 +35,12 @@ class LUT(object):
 
         # Read Rmolgli
         sds = hdf.select('Rmolgli')
-        rho = sds.get() # (mu, raa, mu, tau wind)
-        self.rho_molgli = np.flip(rho,(0,2)) # put in ascending order for mu
+        rho = sds.get() # (mu, raa, mu, tau, wind)
+        self.rho_molgli = rho#np.flip(rho,(0,2)) # put in ascending order for mu
 
         # Read Rmol
         sds = hdf.select('Rmol')
-        rho = sds.get() # (mu, raa, mu, tau wind)
-        self.rho_mol = np.flip(rho,(0,2)) # put in ascending order for mu
+        rho = sds.get() # (mu, raa, mu, tau)
+        self.rho_mol = rho#np.flip(rho,(0,2)) # put in ascending order for mu
  
 

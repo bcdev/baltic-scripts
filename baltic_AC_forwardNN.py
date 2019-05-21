@@ -549,6 +549,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 		adf_acp = luts_olci.LUT_ACP(file_adf_acp)
 		adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
 		adf_clp = luts_olci.LUT_CLP(file_adf_clp)
+                if correction == 'HYGEOS':
+                    LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
 	#elif sensor == 'S2' TODO
 
 	print("Pre-corrections")
