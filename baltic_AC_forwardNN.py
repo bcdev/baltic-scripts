@@ -577,7 +577,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             # Glint + Rayleigh correction
             rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
 
-	"""# Atmospheric model
+	# Atmospheric model
 	print("Compute atmospheric matrices")
 	Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
@@ -624,7 +624,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 	# rho_wn =
 
 	# TODO uncertainties
-	# unc_rhow ="""
+	# unc_rhow =
 
 	###
 	# Writing a product
