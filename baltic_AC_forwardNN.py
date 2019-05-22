@@ -375,12 +375,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
 	geoBand.writeRasterDataFully()
 	geoBand = balticPACProduct.getBand('latitude')
 	geoBand.writeRasterDataFully()
-	# Write Latitude, Longitude explicitly
-	"""geoBand = balticPACProduct.getBand('longitude')
-	geoBand.writeRasterDataFully()
-	geoBand = balticPACProduct.getBand('latitude')
-	geoBand.writeRasterDataFully()"""
-
+	
 	# Write data of spectral fields
 	for key in spectral_dict.keys():
 		data = spectral_dict[key].get('data')
@@ -459,7 +454,7 @@ def check_and_constrain_iop(iop):
 	return iop
 
 
-def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
+def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
 	"""
 	Cost function to be minimized, define for one pixel
 	"""
@@ -478,7 +473,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa
 	# Compute rho_w
 	rho_w = (rho_rc - rho_ag_mod)/td
 	# Compute residual and chi2
-	res  = rho_w[iband_NN]-rho_wmod[iband_NN] # TODO one other option is to minimize at TOA by multiplying by td
+	res  = rho_w[iband_chi2]-rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
 	chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
 	return chi2
 
@@ -491,9 +486,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         correction = 'HYGEOS'
 
 	# Get sensor & AC bands
-	bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
+	bands_sat, bands_rw, bands_corr, bands_chi2 = get_bands.main(sensor,"dummy")
 	nbands = len(bands_sat)
 	iband_corr = np.searchsorted(bands_sat, bands_corr)
+	iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
 	bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754] #TODO put in get_bands and adapt with sensor
 	iband_NN = np.searchsorted(bands_sat, bands_forwardNN)
 	bands_abs = [760,764,767,900,940] #TODO put in get_bands and adapt with sensor
@@ -581,7 +577,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             # Glint + Rayleigh correction
             rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
 
-	# Atmospheric model
+	"""# Atmospheric model
 	print("Compute atmospheric matrices")
 	Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
@@ -604,7 +600,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 		#iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
 		iop_0 = np.array([-3., -3., -3., -3., -3.])
 		# Nelder-Mead optimization
-		args_pix = (sensor, nbands, iband_NN, iband_corr, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+		args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
 		NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
 		iop[ipix,:] = NM_res.x
 		#success = NM_res.success TODO add a flag in the Level-2 output to get this info
@@ -628,7 +624,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 	# rho_wn =
 
 	# TODO uncertainties
-	# unc_rhow =
+	# unc_rhow ="""
 
 	###
 	# Writing a product
