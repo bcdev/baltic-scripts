@@ -378,23 +378,23 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     balticPACProduct.writeHeader(baltic__product_path)
     writer.writeProductNodes(balticPACProduct, baltic__product_path)
 
-    # Write Latitude, Longitude explicitly
-    geoBand = balticPACProduct.getBand('longitude')
-    geoBand.writeRasterDataFully()
-    geoBand = balticPACProduct.getBand('latitude')
-    geoBand.writeRasterDataFully()
+	# Write Latitude, Longitude explicitly
+	geoBand = balticPACProduct.getBand('longitude')
+	geoBand.writeRasterDataFully()
+	geoBand = balticPACProduct.getBand('latitude')
+	geoBand.writeRasterDataFully()
 
-    # Write data of spectral fields
-    for key in spectral_dict.keys():
-        data = spectral_dict[key].get('data')
-        if not data is None:
-            nbands_key = data.shape[-1]
-            for i in range(nbands_key):
-                brtoa_name = key + "_" + str(i + 1)
-                rtoaBand = balticPACProduct.getBand(brtoa_name)
-                out = np.array(data[:, i]).reshape(bandShape)
-                rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-                                                                         ProgressMonitor.NULL)
+	# Write data of spectral fields
+	for key in spectral_dict.keys():
+		data = spectral_dict[key].get('data')
+		if not data is None:
+			nbands_key = data.shape[-1]
+			for i in range(nbands_key):
+				brtoa_name = key + "_" + str(i + 1)
+				rtoaBand = balticPACProduct.getBand(brtoa_name)
+				out = np.array(data[:, i]).reshape(bandShape)
+				rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
+																		 ProgressMonitor.NULL)
 
     # Write data of scalar fields
     if not scalar_dict is None:
@@ -463,10 +463,10 @@ def check_and_constrain_iop(iop):
     return iop
 
 
-def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
-    """
-    Cost function to be minimized, define for one pixel
-    """
+def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
+	"""
+	Cost function to be minimized, define for one pixel
+	"""
 
     # Compute rhow_mod
     rho_wmod = np.zeros(nbands) + np.NaN
@@ -474,17 +474,17 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, rho_rc, td, sza, oza, raa
     # Check iop range and apply constraints to forwardNN input range
     iop = check_and_constrain_iop(iop)
 
-    rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
-    # Compute rho_ag and fit best atmospheric model
-    rho_ag = rho_rc - td*rho_wmod
-    coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
-    rho_ag_mod  = np.einsum('...ij,...j->...i',Aatm,coefs)
-    # Compute rho_w
-    rho_w = (rho_rc - rho_ag_mod)/td
-    # Compute residual and chi2
-    res  = rho_w[iband_NN]-rho_wmod[iband_NN] # TODO one other option is to minimize at TOA by multiplying by td
-    chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
-    return chi2
+	rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
+	# Compute rho_ag and fit best atmospheric model
+	rho_ag = rho_rc - td*rho_wmod
+	coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
+	rho_ag_mod  = np.einsum('...ij,...j->...i',Aatm,coefs)
+	# Compute rho_w
+	rho_w = (rho_rc - rho_ag_mod)/td
+	# Compute residual and chi2
+	res  = rho_w[iband_chi2]-rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
+	chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
+	return chi2
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None, correction='IPF'):
     """
@@ -495,14 +495,15 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     #correction = 'HYGEOS'
     #correction = 'IPF'
 
-    # Get sensor & AC bands
-    bands_sat, bands_rw, bands_corr = get_bands.main(sensor,"dummy")
-    nbands = len(bands_sat)
-    iband_corr = np.searchsorted(bands_sat, bands_corr)
-    bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754] #TODO put in get_bands and adapt with sensor
-    iband_NN = np.searchsorted(bands_sat, bands_forwardNN)
-    bands_abs = [760,764,767,900,940] #TODO put in get_bands and adapt with sensor
-    iband_abs = np.searchsorted(bands_sat, bands_abs)
+	# Get sensor & AC bands
+	bands_sat, bands_rw, bands_corr, bands_chi2 = get_bands.main(sensor,"dummy")
+	nbands = len(bands_sat)
+	iband_corr = np.searchsorted(bands_sat, bands_corr)
+	iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
+	bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754] #TODO put in get_bands and adapt with sensor
+	iband_NN = np.searchsorted(bands_sat, bands_forwardNN)
+	bands_abs = [760,764,767,900,940] #TODO put in get_bands and adapt with sensor
+	iband_abs = np.searchsorted(bands_sat, bands_abs)
 
     # Initialising a product for Reading with snappy
     product = snp.ProductIO.readProduct(os.path.join(scene_path,filename))
@@ -595,31 +596,31 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     print("Compute atmospheric matrices")
     Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
-    # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    print("Inversion")
-    niop = 5
-    iop = np.zeros((npix,niop)) + np.NaN
-    percent_old = 0
-    ipix_proc = 0
-    npix_proc = np.count_nonzero(valid)
-    for ipix in range(npix):
-        if not valid[ipix]: continue
-        # Display processing progress with respect to the valid pixels
-        percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
-        if percent != percent_old:
-            percent_old = percent
-            sys.stdout.write(" ...%d%%"%percent)
-            sys.stdout.flush()
-        # First guess
-        #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        iop_0 = np.array([-3., -3., -3., -3., -3.])
-        # Nelder-Mead optimization
-        args_pix = (sensor, nbands, iband_NN, iband_corr, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-        NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
-        iop[ipix,:] = NM_res.x
-        #success = NM_res.success TODO add a flag in the Level-2 output to get this info
-        ipix_proc += 1
-    print("")
+	# Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+	print("Inversion")
+	niop = 5
+	iop = np.zeros((npix,niop)) + np.NaN
+	percent_old = 0
+	ipix_proc = 0
+	npix_proc = np.count_nonzero(valid)
+	for ipix in range(npix):
+		if not valid[ipix]: continue
+		# Display processing progress with respect to the valid pixels
+		percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
+		if percent != percent_old:
+			percent_old = percent
+			sys.stdout.write(" ...%d%%"%percent)
+			sys.stdout.flush()
+		# First guess
+		#iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
+		iop_0 = np.array([-3., -3., -3., -3., -3.])
+		# Nelder-Mead optimization
+		args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+		NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
+		iop[ipix,:] = NM_res.x
+		#success = NM_res.success TODO add a flag in the Level-2 output to get this info
+		ipix_proc += 1
+	print("")
 
     # Compute the final residual
     print("Compute final residual")
