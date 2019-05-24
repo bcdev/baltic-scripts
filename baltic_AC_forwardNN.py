@@ -23,6 +23,16 @@ from snappy import ProductUtils
 from snappy import ProgressMonitor
 from snappy import FlagCoding
 from snappy import jpy
+from snappy import GPF
+PlanarImage = jpy.get_type('javax.media.jai.PlanarImage')
+TiledImage = jpy.get_type('javax.media.jai.TiledImage')
+ColorModel = jpy.get_type('java.awt.image.ColorModel')
+DataBuffer = jpy.get_type('java.awt.image.DataBuffer')
+PixelInterleavedSampleModel = jpy.get_type('java.awt.image.PixelInterleavedSampleModel')
+SampleModel = jpy.get_type('java.awt.image.SampleModel')
+WritableRaster = jpy.get_type('java.awt.image.WritableRaster')
+DataBufferShort = jpy.get_type('java.awt.image.DataBufferShort')
+DataBufferDouble = jpy.get_type('java.awt.image.DataBufferDouble')
 
 # local import
 from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos
@@ -431,6 +441,63 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     balticPACProduct.closeIO()
 
 
+def write_BalticP_AC_Product_CSV(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
+    # Initialise the output product
+    File = jpy.get_type('java.io.File')
+    width = product.getSceneRasterWidth()
+    height = product.getSceneRasterHeight()
+    bandShape = (height, width)
+
+    balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
+    balticPACProduct.setFileLocation(File(baltic__product_path))
+
+    ProductUtils.copyGeoCoding(product, balticPACProduct)
+
+    # Define total number of bands (TOA)
+    if (sensor == 'OLCI'):
+        nbands = 21
+    #elif (sensor == 'S2'): TODO
+
+    for key in spectral_dict.keys():
+        data = spectral_dict[key].get('data')
+        if not data is None:
+            nbands_key = data.shape[-1]
+            print(nbands_key)
+            for i in range(nbands_key):
+                brtoa_name = key + "_" + str(i + 1)
+                print(brtoa_name)
+                band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
+                band.setNoDataValue(np.nan)
+                band.setNoDataValueUsed(True)
+
+                sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+                cm = PlanarImage.createColorModel(sm)
+                sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+                sourceData = np.array(data[:, i]).reshape(bandShape)
+                sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+                band.setSourceImage(sourceImage)
+
+    # Create empty bands for scalar fields
+    if not scalar_dict is None:
+        for key in scalar_dict.keys():
+            print(key)
+            singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+            data = scalar_dict[key].get('data')
+            if not data is None:
+                sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+                cm = PlanarImage.createColorModel(sm)
+                sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+                sourceData = np.array(data).reshape(bandShape)
+                sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+                singleBand.setSourceImage(sourceImage)
+
+    GPF.writeProduct(balticPACProduct, File(baltic__product_path), 'CSV', False, ProgressMonitor.NULL)
+
+    balticPACProduct.closeIO()
+
+
 def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp):
     """
     Compute matrices associated to the polynomial modelling of the atmosphere (POLYMER)
@@ -498,6 +565,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
     res  = rho_w[iband_chi2]-rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
     chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
     return chi2
+
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None, correction='IPF'):
     """
@@ -670,7 +738,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             scalar_dict[field] = {'data': eval(outputScalar[field])}
     else: scalar_dict = None
 
-    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
+    #write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
+    write_BalticP_AC_Product_CSV(product, baltic__product_path+'.csv', sensor, spectral_dict, scalar_dict)
 
     product.closeProductReader()
 
