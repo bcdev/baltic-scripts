@@ -172,7 +172,7 @@ def diffuse_transmittance(sza, oza, pressure, adf_ppp):
 
     # Compute td
     td = np.exp(-0.5*adf_ppp.tau_ray*pressure[:,None]/adf_ppp.std_press*air_mass[:,None])
-    td = np.array(td, dtype='float64')
+    #td = np.array(td, dtype='float64')
 
     return td
 
