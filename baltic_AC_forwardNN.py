@@ -198,17 +198,17 @@ def angle_Reader(product, sensor):
 
 def calculate_diff_azim(oaa, saa):
     ###
+    # MERIS/OLCI ground segment definition
+    raa = np.degrees(np.arccos(np.cos(np.radians(oaa - saa))))
+    ###
     # azimuth difference as input to the NN is defined in a range between 0° and 180°
+    ## from c2rcc JAVA implementation
+    nn_raa = np.abs(180 + oaa - saa)
+    ID = np.array(nn_raa > 180)
+    if np.sum(ID) > 0:
+        nn_raa = 360 - nn_raa
 
-    raa = np.array(oaa - saa)
-    ID = np.array( raa < 0)
-    if np.sum(ID)>0.:
-            raa[ID] = 360. + raa[ID]
-    ID = np.array(raa > 180.)
-    if np.sum(ID)>0.:
-            raa[ID] = raa[ID] -180.
-
-    return raa
+    return raa, nn_raa
 
 
 def check_valid_pixel_expression_L1(product, sensor):
@@ -349,7 +349,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 
     return output
 
-def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
+def write_BalticP_AC_Product_old(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
     width = product.getSceneRasterWidth()
@@ -441,12 +441,17 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     balticPACProduct.closeIO()
 
 
-def write_BalticP_AC_Product_CSV(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
+def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None, copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
     bandShape = (height, width)
+
+    if outputProductFormat == "BEAM-DIMAP":
+        baltic__product_path = baltic__product_path + '.dim'
+    elif outputProductFormat == 'CSV':
+        baltic__product_path = baltic__product_path + '.csv'
 
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
     balticPACProduct.setFileLocation(File(baltic__product_path))
@@ -463,17 +468,22 @@ def write_BalticP_AC_Product_CSV(product, baltic__product_path, sensor, spectral
         if not data is None:
             nbands_key = data.shape[-1]
             print(nbands_key)
+            if outputProductFormat == 'BEAM-DIMAP':
+                bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
                 print(brtoa_name)
                 band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
+                if outputProductFormat == 'BEAM-DIMAP':
+                    ProductUtils.copySpectralBandProperties(bsources[i], band)
                 band.setNoDataValue(np.nan)
                 band.setNoDataValueUsed(True)
 
                 sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
                 cm = PlanarImage.createColorModel(sm)
                 sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
-                sourceData = np.array(data[:, i]).reshape(bandShape)
+                sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
                 sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
                 band.setSourceImage(sourceImage)
 
@@ -489,11 +499,35 @@ def write_BalticP_AC_Product_CSV(product, baltic__product_path, sensor, spectral
                 sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
                 cm = PlanarImage.createColorModel(sm)
                 sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
-                sourceData = np.array(data).reshape(bandShape)
+                sourceData = np.array(data, dtype='float64').reshape(bandShape)
                 sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
                 singleBand.setSourceImage(sourceImage)
 
-    GPF.writeProduct(balticPACProduct, File(baltic__product_path), 'CSV', False, ProgressMonitor.NULL)
+    if copyOriginalProduct:
+        originalBands = product.getBandNames()
+        balticBands = balticPACProduct.getBandNames()
+        for bb in balticBands:
+            originalBands = [ob for ob in originalBands if ob != bb]
+        for ob in originalBands:
+            singleBand = balticPACProduct.addBand(ob, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+
+            data = get_band_or_tiePointGrid(product,ob)
+            sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+            cm = PlanarImage.createColorModel(sm)
+            sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+            sourceData = np.array(data, dtype='float64').reshape(bandShape)
+            sourceImage.setData(
+                WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+            singleBand.setSourceImage(sourceImage)
+
+    if outputProductFormat == 'BEAM-DIMAP':
+        # Set auto grouping
+        autoGroupingString = ':'.join(spectral_dict.keys())
+        balticPACProduct.setAutoGrouping(autoGroupingString)
+
+    GPF.writeProduct(balticPACProduct, File(baltic__product_path), outputProductFormat, False, ProgressMonitor.NULL)
 
     balticPACProduct.closeIO()
 
@@ -567,7 +601,8 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
     return chi2
 
 
-def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None, outputScalar=None, correction='IPF'):
+def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
+                        outputScalar=None, correction='IPF', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     """
     Main function to run the Baltic+ AC based on forward NN
     """
@@ -607,7 +642,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Read geometry and compute relative azimuth angle
     oaa, oza, saa, sza = angle_Reader(product, sensor)
-    raa = calculate_diff_azim(oaa, saa)
+    raa, nn_raa = calculate_diff_azim(oaa, saa)
 
     # Read latitude, longitude
     latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
@@ -694,7 +729,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
         iop_0 = np.array([-3., -3., -3., -3., -3.])
         # Nelder-Mead optimization
-        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
         NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
         iop[ipix,:] = NM_res.x
         #success = NM_res.success TODO add a flag in the Level-2 output to get this info
@@ -704,7 +740,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Compute the final residual
     print("Compute final residual")
     rho_wmod = np.zeros((npix, nbands)) + np.NaN
-    rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
     rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
     rho_ag = rho_rc - td*rho_wmod
     coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
@@ -738,8 +775,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             scalar_dict[field] = {'data': eval(outputScalar[field])}
     else: scalar_dict = None
 
-    #write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict)
-    write_BalticP_AC_Product_CSV(product, baltic__product_path+'.csv', sensor, spectral_dict, scalar_dict)
+    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict, copyOriginalProduct, outputProductFormat)
 
     product.closeProductReader()
 
