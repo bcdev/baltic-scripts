@@ -25,15 +25,15 @@ from snappy import FlagCoding
 from snappy import jpy
 from snappy import GPF
 from snappy import HashMap
-PlanarImage = jpy.get_type('javax.media.jai.PlanarImage')
-TiledImage = jpy.get_type('javax.media.jai.TiledImage')
-ColorModel = jpy.get_type('java.awt.image.ColorModel')
-DataBuffer = jpy.get_type('java.awt.image.DataBuffer')
-PixelInterleavedSampleModel = jpy.get_type('java.awt.image.PixelInterleavedSampleModel')
-SampleModel = jpy.get_type('java.awt.image.SampleModel')
-WritableRaster = jpy.get_type('java.awt.image.WritableRaster')
-DataBufferShort = jpy.get_type('java.awt.image.DataBufferShort')
-DataBufferDouble = jpy.get_type('java.awt.image.DataBufferDouble')
+# PlanarImage = jpy.get_type('javax.media.jai.PlanarImage')
+# TiledImage = jpy.get_type('javax.media.jai.TiledImage')
+# ColorModel = jpy.get_type('java.awt.image.ColorModel')
+# DataBuffer = jpy.get_type('java.awt.image.DataBuffer')
+# PixelInterleavedSampleModel = jpy.get_type('java.awt.image.PixelInterleavedSampleModel')
+# SampleModel = jpy.get_type('java.awt.image.SampleModel')
+# WritableRaster = jpy.get_type('java.awt.image.WritableRaster')
+# DataBufferShort = jpy.get_type('java.awt.image.DataBufferShort')
+# DataBufferDouble = jpy.get_type('java.awt.image.DataBufferDouble')
 
 # local import
 from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos
@@ -481,12 +481,17 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
                 band.setNoDataValue(np.nan)
                 band.setNoDataValueUsed(True)
 
-                sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-                cm = PlanarImage.createColorModel(sm)
-                sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
                 sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
-                sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-                band.setSourceImage(sourceImage)
+                band.setRasterData(ProductData.createInstance(sourceData))
+
+                # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+                # cm = PlanarImage.createColorModel(sm)
+                # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+                # sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
+                # sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+                # band.setSourceImage(sourceImage)
+
+
 
     # Create empty bands for scalar fields
     if not scalar_dict is None:
@@ -497,12 +502,14 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             singleBand.setNoDataValueUsed(True)
             data = scalar_dict[key].get('data')
             if not data is None:
-                sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-                cm = PlanarImage.createColorModel(sm)
-                sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
                 sourceData = np.array(data, dtype='float64').reshape(bandShape)
-                sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-                singleBand.setSourceImage(sourceImage)
+                singleBand.setRasterData(ProductData.createInstance(sourceData))
+                # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+                # cm = PlanarImage.createColorModel(sm)
+                # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+                # sourceData = np.array(data, dtype='float64').reshape(bandShape)
+                # sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+                # singleBand.setSourceImage(sourceImage)
 
     if copyOriginalProduct:
         originalBands = product.getBandNames()
@@ -515,13 +522,16 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             singleBand.setNoDataValueUsed(True)
 
             data = get_band_or_tiePointGrid(product,ob)
-            sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-            cm = PlanarImage.createColorModel(sm)
-            sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
             sourceData = np.array(data, dtype='float64').reshape(bandShape)
-            sourceImage.setData(
-                WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-            singleBand.setSourceImage(sourceImage)
+            singleBand.setRasterData(ProductData.createInstance(sourceData))
+
+            # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
+            # cm = PlanarImage.createColorModel(sm)
+            # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
+            # sourceData = np.array(data, dtype='float64').reshape(bandShape)
+            # sourceImage.setData(
+            #     WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
+            # singleBand.setSourceImage(sourceImage)
 
     if outputProductFormat == 'BEAM-DIMAP':
         # Set auto grouping
