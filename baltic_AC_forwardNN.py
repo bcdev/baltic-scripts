@@ -602,9 +602,10 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
 
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
-                        outputScalar=None, correction='IPF', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
+                        outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     """
     Main function to run the Baltic+ AC based on forward NN
+    correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
     """
 
     # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
