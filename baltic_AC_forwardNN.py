@@ -606,6 +606,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     """
     Main function to run the Baltic+ AC based on forward NN
+    correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
     """
 
     # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
