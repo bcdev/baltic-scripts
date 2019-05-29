@@ -24,6 +24,7 @@ from snappy import ProgressMonitor
 from snappy import FlagCoding
 from snappy import jpy
 from snappy import GPF
+from snappy import HashMap
 PlanarImage = jpy.get_type('javax.media.jai.PlanarImage')
 TiledImage = jpy.get_type('javax.media.jai.TiledImage')
 ColorModel = jpy.get_type('java.awt.image.ColorModel')
@@ -602,7 +603,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
 
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
-                        outputScalar=None, correction='IPF', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
+                        outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     """
     Main function to run the Baltic+ AC based on forward NN
     """
@@ -620,7 +621,18 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     iband_abs = np.searchsorted(bands_sat, bands_abs)
 
     # Initialising a product for Reading with snappy
-    product = snp.ProductIO.readProduct(os.path.join(scene_path,filename))
+
+    product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
+
+    if sensor == "S2MSI":
+        # Resampling to 60m
+        parameters = HashMap()
+        parameters.put('resolution', 60.)
+        parameters.put('upsampling', 'Bicubic')
+        parameters.put('downsampling', 'Mean') #
+        parameters.put('flagDownsampling', 'FlagOr') # 'First', 'FlagAnd'
+        product = GPF.createProduct('S2Resampling', parameters, product)
+
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
     npix = width*height
@@ -643,6 +655,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Read geometry and compute relative azimuth angle
     oaa, oza, saa, sza = angle_Reader(product, sensor)
     raa, nn_raa = calculate_diff_azim(oaa, saa)
+    # for test:
+    #nn_raa = np.copy(raa)
 
     # Read latitude, longitude
     latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
