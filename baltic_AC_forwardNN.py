@@ -100,7 +100,7 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
 
 def Level1_Reader(product, sensor, band_group='radiance', reshape=True):
     input_label = []
-    if sensor == 'S2':
+    if sensor == 'S2MSI':
         input_label = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
     elif sensor == 'OLCI':
         if band_group == 'radiance':
@@ -178,7 +178,7 @@ def radianceToReflectance_Reader(product, sensor = '', print_info=False):
         solar_flux = Level1_Reader(product, sensor, band_group='solar_flux',reshape=False)
         SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
         refl = rad * np.pi / (solar_flux * np.cos(SZA.reshape(rad.shape[0],1)*np.pi/180.))
-    elif sensor == 'S2':
+    elif sensor == 'S2MSI':
         refl = Level1_Reader(product, sensor,reshape=False)
 
     return refl
@@ -189,7 +189,7 @@ def angle_Reader(product, sensor):
         oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False)
         saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False)
         sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
-    elif sensor == 'S2': #TODO, after S2_resampling.
+    elif sensor == 'S2MSI': #TODO, after S2_resampling.
         oaa = get_band_or_tiePointGrid(product, 'view_azimuth_mean', reshape=False)
         oza = get_band_or_tiePointGrid(product, 'view_zenith_mean', reshape=False)
         saa = get_band_or_tiePointGrid(product, 'sun_azimuth', reshape=False)
@@ -231,7 +231,7 @@ def check_valid_pixel_expression_L1(product, sensor):
         invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
         valid_pixel_flag = np.logical_not(invalid_mask)
 
-    elif sensor == 'S2':
+    elif sensor == 'S2MSI':
         #TODO: set valid pixel expression L1C S2
         height = product.getSceneRasterHeight()
         width = product.getSceneRasterWidth()
@@ -296,7 +296,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     nBands = None
     if sensor == 'OLCI':
         nBands = 12
-    elif sensor == 'S2':
+    elif sensor == 'S2MSI':
         nBands = 6
     output = np.zeros((iop.shape[0], nBands)) + np.NaN
 
@@ -462,7 +462,8 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     # Define total number of bands (TOA)
     if (sensor == 'OLCI'):
         nbands = 21
-    #elif (sensor == 'S2'): TODO
+    if (sensor == 'S2MSI'):
+        nbands = 13
 
     for key in spectral_dict.keys():
         data = spectral_dict[key].get('data')
@@ -470,7 +471,12 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             nbands_key = data.shape[-1]
             print(nbands_key)
             if outputProductFormat == 'BEAM-DIMAP':
-                bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+                if sensor == 'OLCI':
+                    bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+                elif sensor == 'S2MSI':
+                    bsources = [product.getBand("B%" % (i + 1)) for i in range(8)]
+                    bsources.append(product.getBand('B8A'))
+                    [bsources.append(product.getBand("B%0" % (i + 9))) for i in range(4)]
 
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
@@ -638,7 +644,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     if sensor == "S2MSI":
         # Resampling to 60m
         parameters = HashMap()
-        parameters.put('resolution', 60.)
+        parameters.put('resolution', '60')
         parameters.put('upsampling', 'Bicubic')
         parameters.put('downsampling', 'Mean') #
         parameters.put('flagDownsampling', 'FlagOr') # 'First', 'FlagAnd'
@@ -651,136 +657,137 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Read L1B product and convert Radiance to reflectance
     rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
 
-    # Classify pixels with Level-1 flags
-    valid = check_valid_pixel_expression_L1(product, sensor)
 
-    # Limit processing to sub-box
-    if subset:
-        sline,eline,scol,ecol = subset
-        valid_subset = np.zeros((height,width),dtype='bool')
-        valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
-        print('subset, valid:', np.nansum(valid_subset))
-        valid = valid_subset.reshape(height*width)
-        del valid_subset
-
-    # Read geometry and compute relative azimuth angle
-    oaa, oza, saa, sza = angle_Reader(product, sensor)
-    raa, nn_raa = calculate_diff_azim(oaa, saa)
-    # for test:
-    #nn_raa = np.copy(raa)
-
-    # Read latitude, longitude
-    latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
-    longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
-
-    # Read per-pixel wavelength
-    wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
-
-    # Read day in the year
-    yday = get_yday(product, reshape=False)
-
-    # Read meteo data
-    pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
-    ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
-    tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
-    wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
-    wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
-    windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
-
-    # Read LUTs
-    if sensor == 'OLCI':
-        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
-        adf_acp = luts_olci.LUT_ACP(file_adf_acp)
-        adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
-        adf_clp = luts_olci.LUT_CLP(file_adf_clp)
-        if correction == 'HYGEOS':
-            LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
-    #elif sensor == 'S2' TODO
-
-    print("Pre-corrections")
-    # Gaseous correction
-    rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
-            pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
-
-    # Compute diffuse transmittance (Rayleigh)
-    td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
-
-    # Glint correction
-    rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
-    if correction == 'IPF':
-        # Glint correction
-        rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
-        # White-caps correction
-        #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
-
-        # Rayleigh correction
-        rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
-
-    elif correction == 'HYGEOS':
-        # Glint correction - required only to get rho_g in the AC
-        rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
-        #LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
-        # Glint + Rayleigh correction
-        rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
-        #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-        #													  pressure, windm, lut_hygeos)
-
-
-    # Atmospheric model
-    print("Compute atmospheric matrices")
-    Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
-
-    # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    print("Inversion")
-    niop = 5
-    iop = np.zeros((npix,niop)) + np.NaN
-    percent_old = 0
-    ipix_proc = 0
-    npix_proc = np.count_nonzero(valid)
-    for ipix in range(npix):
-        if not valid[ipix]: continue
-        # Display processing progress with respect to the valid pixels
-        percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
-        if percent != percent_old:
-            percent_old = percent
-            sys.stdout.write(" ...%d%%"%percent)
-            sys.stdout.flush()
-        # First guess
-        #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        iop_0 = np.array([-3., -3., -3., -3., -3.])
-        # Nelder-Mead optimization
-        #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-        NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
-        iop[ipix,:] = NM_res.x
-        #success = NM_res.success TODO add a flag in the Level-2 output to get this info
-        ipix_proc += 1
-    print("")
-
-    # Compute the final residual
-    print("Compute final residual")
-    rho_wmod = np.zeros((npix, nbands)) + np.NaN
-    #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
-    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
-    rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
-    rho_ag = rho_rc - td*rho_wmod
-    coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
-    rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
-    rho_w = (rho_rc - rho_ag_mod)/td
-
-    # Set absorption band to NaN
-    rho_w[:,iband_abs] = np.NaN
-
-    # TODO Normalisation
-    # rho_wn =
-
-    # TODO uncertainties
-    # unc_rhow =
+    # # Classify pixels with Level-1 flags
+    # valid = check_valid_pixel_expression_L1(product, sensor)
+    #
+    # # Limit processing to sub-box
+    # if subset:
+    #     sline,eline,scol,ecol = subset
+    #     valid_subset = np.zeros((height,width),dtype='bool')
+    #     valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
+    #     print('subset, valid:', np.nansum(valid_subset))
+    #     valid = valid_subset.reshape(height*width)
+    #     del valid_subset
+    #
+    # # Read geometry and compute relative azimuth angle
+    # oaa, oza, saa, sza = angle_Reader(product, sensor)
+    # raa, nn_raa = calculate_diff_azim(oaa, saa)
+    # # for test:
+    # #nn_raa = np.copy(raa)
+    #
+    # # Read latitude, longitude
+    # latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
+    # longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
+    #
+    # # Read per-pixel wavelength
+    # wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
+    #
+    # # Read day in the year
+    # yday = get_yday(product, reshape=False)
+    #
+    # # Read meteo data
+    # pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
+    # ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
+    # tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
+    # wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
+    # wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
+    # windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
+    #
+    # # Read LUTs
+    # if sensor == 'OLCI':
+    #     file_adf_acp = default_ADF['OLCI']['file_adf_acp']
+    #     file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
+    #     file_adf_clp = default_ADF['OLCI']['file_adf_clp']
+    #     adf_acp = luts_olci.LUT_ACP(file_adf_acp)
+    #     adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
+    #     adf_clp = luts_olci.LUT_CLP(file_adf_clp)
+    #     if correction == 'HYGEOS':
+    #         LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
+    # #elif sensor == 'S2' TODO
+    #
+    # print("Pre-corrections")
+    # # Gaseous correction
+    # rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
+    #         pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
+    #
+    # # Compute diffuse transmittance (Rayleigh)
+    # td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
+    #
+    # # Glint correction
+    # rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    #
+    # if correction == 'IPF':
+    #     # Glint correction
+    #     rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    #
+    #     # White-caps correction
+    #     #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+    #
+    #     # Rayleigh correction
+    #     rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
+    #
+    # elif correction == 'HYGEOS':
+    #     # Glint correction - required only to get rho_g in the AC
+    #     rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    #
+    #     #LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
+    #     # Glint + Rayleigh correction
+    #     rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
+    #     #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+    #     #													  pressure, windm, lut_hygeos)
+    #
+    #
+    # # Atmospheric model
+    # print("Compute atmospheric matrices")
+    # Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
+    #
+    # # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+    # print("Inversion")
+    # niop = 5
+    # iop = np.zeros((npix,niop)) + np.NaN
+    # percent_old = 0
+    # ipix_proc = 0
+    # npix_proc = np.count_nonzero(valid)
+    # for ipix in range(npix):
+    #     if not valid[ipix]: continue
+    #     # Display processing progress with respect to the valid pixels
+    #     percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
+    #     if percent != percent_old:
+    #         percent_old = percent
+    #         sys.stdout.write(" ...%d%%"%percent)
+    #         sys.stdout.flush()
+    #     # First guess
+    #     #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
+    #     iop_0 = np.array([-3., -3., -3., -3., -3.])
+    #     # Nelder-Mead optimization
+    #     #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+    #     args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+    #     NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
+    #     iop[ipix,:] = NM_res.x
+    #     #success = NM_res.success TODO add a flag in the Level-2 output to get this info
+    #     ipix_proc += 1
+    # print("")
+    #
+    # # Compute the final residual
+    # print("Compute final residual")
+    # rho_wmod = np.zeros((npix, nbands)) + np.NaN
+    # #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    # rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
+    # rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
+    # rho_ag = rho_rc - td*rho_wmod
+    # coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
+    # rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
+    # rho_w = (rho_rc - rho_ag_mod)/td
+    #
+    # # Set absorption band to NaN
+    # rho_w[:,iband_abs] = np.NaN
+    #
+    # # TODO Normalisation
+    # # rho_wn =
+    #
+    # # TODO uncertainties
+    # # unc_rhow =
 
     ###
     # Writing a product
