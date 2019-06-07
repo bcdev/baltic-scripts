@@ -11,6 +11,7 @@ import pandas as pd
 from scipy.optimize import minimize
 import sys
 import time
+import glob
 
 # snappy import
 #sys.path.append('/home/cmazeran/.snap/snap-python')
@@ -18,6 +19,7 @@ sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
+from snappy import ProductDataUTC
 from snappy import ProductIO
 from snappy import ProductUtils
 from snappy import ProgressMonitor
@@ -25,15 +27,21 @@ from snappy import FlagCoding
 from snappy import jpy
 from snappy import GPF
 from snappy import HashMap
-# PlanarImage = jpy.get_type('javax.media.jai.PlanarImage')
-# TiledImage = jpy.get_type('javax.media.jai.TiledImage')
-# ColorModel = jpy.get_type('java.awt.image.ColorModel')
-# DataBuffer = jpy.get_type('java.awt.image.DataBuffer')
-# PixelInterleavedSampleModel = jpy.get_type('java.awt.image.PixelInterleavedSampleModel')
-# SampleModel = jpy.get_type('java.awt.image.SampleModel')
-# WritableRaster = jpy.get_type('java.awt.image.WritableRaster')
-# DataBufferShort = jpy.get_type('java.awt.image.DataBufferShort')
-# DataBufferDouble = jpy.get_type('java.awt.image.DataBufferDouble')
+#from snappy import TimeCoding #org.esa.snap.core.datamodel.TimeCoding
+from snappy import PixelPos #org.esa.snap.core.datamodel.PixelPos
+
+#fetchOzone = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons.fetchOzone')
+AtmosphericAuxdata = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdata')
+AtmosphericAuxdataBuilder = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdataBuilder')
+TimeCoding = jpy.get_type('org.esa.snap.core.datamodel.TimeCoding')
+AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
+AncillaryCommons = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons')
+AncRepository = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncRepository')
+File = jpy.get_type('java.io.File')
+
+AncDataFormat = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDataFormat')
+Calendar = jpy.get_type('java.util.Calendar')
+
 
 # local import
 from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos
@@ -41,6 +49,7 @@ import get_bands
 from misc import default_ADF, nlinear
 import luts_olci
 import lut_hygeos
+from auxdata_handling import setAuxData, checkAuxDataAvailablity
 
 # Set locale for proper time reading with datetime
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
@@ -296,7 +305,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     nBands = None
     if sensor == 'OLCI':
         nBands = 12
-    elif sensor == 'S2MSI':
+    elif sensor == 'S2':
         nBands = 6
     output = np.zeros((iop.shape[0], nBands)) + np.NaN
 
@@ -462,7 +471,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     # Define total number of bands (TOA)
     if (sensor == 'OLCI'):
         nbands = 21
-    if (sensor == 'S2MSI'):
+    elif (sensor == 'S2MSI'):
         nbands = 13
 
     for key in spectral_dict.keys():
@@ -474,9 +483,9 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
                 if sensor == 'OLCI':
                     bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
                 elif sensor == 'S2MSI':
-                    bsources = [product.getBand("B%" % (i + 1)) for i in range(8)]
+                    bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
                     bsources.append(product.getBand('B8A'))
-                    [bsources.append(product.getBand("B%0" % (i + 9))) for i in range(4)]
+                    [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
 
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
@@ -490,14 +499,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
                 sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
                 band.setRasterData(ProductData.createInstance(sourceData))
 
-                # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-                # cm = PlanarImage.createColorModel(sm)
-                # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
-                # sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
-                # sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-                # band.setSourceImage(sourceImage)
-
-
 
     # Create empty bands for scalar fields
     if not scalar_dict is None:
@@ -510,12 +511,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             if not data is None:
                 sourceData = np.array(data, dtype='float64').reshape(bandShape)
                 singleBand.setRasterData(ProductData.createInstance(sourceData))
-                # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-                # cm = PlanarImage.createColorModel(sm)
-                # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
-                # sourceData = np.array(data, dtype='float64').reshape(bandShape)
-                # sourceImage.setData(WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-                # singleBand.setSourceImage(sourceImage)
 
     if copyOriginalProduct:
         originalBands = product.getBandNames()
@@ -531,13 +526,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             sourceData = np.array(data, dtype='float64').reshape(bandShape)
             singleBand.setRasterData(ProductData.createInstance(sourceData))
 
-            # sm = PixelInterleavedSampleModel(DataBuffer.TYPE_DOUBLE, width, height, 1, width, np.array(0))
-            # cm = PlanarImage.createColorModel(sm)
-            # sourceImage = TiledImage(0, 0, width, height, 0, 0, sm, cm)
-            # sourceData = np.array(data, dtype='float64').reshape(bandShape)
-            # sourceImage.setData(
-            #     WritableRaster.createWritableRaster(sm, DataBufferDouble(sourceData, width * height), None))
-            # singleBand.setSourceImage(sourceImage)
 
     if outputProductFormat == 'BEAM-DIMAP':
         # Set auto grouping
@@ -619,7 +607,8 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
 
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
-                        outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
+                        outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
+                        atmosphericAuxDataPath = None):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -641,7 +630,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
 
-    if sensor == "S2MSI":
+    if sensor == "S2MSI" : # todo: and if product is not resampled!
         # Resampling to 60m
         parameters = HashMap()
         parameters.put('resolution', '60')
@@ -649,6 +638,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         parameters.put('downsampling', 'Mean') #
         parameters.put('flagDownsampling', 'FlagOr') # 'First', 'FlagAnd'
         product = GPF.createProduct('S2Resampling', parameters, product)
+
 
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
@@ -658,9 +648,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
 
 
-    # # Classify pixels with Level-1 flags
-    # valid = check_valid_pixel_expression_L1(product, sensor)
-    #
+    # Classify pixels with Level-1 flags
+    valid = check_valid_pixel_expression_L1(product, sensor)
+
     # # Limit processing to sub-box
     # if subset:
     #     sline,eline,scol,ecol = subset
@@ -670,124 +660,138 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     #     valid = valid_subset.reshape(height*width)
     #     del valid_subset
     #
-    # # Read geometry and compute relative azimuth angle
-    # oaa, oza, saa, sza = angle_Reader(product, sensor)
-    # raa, nn_raa = calculate_diff_azim(oaa, saa)
-    # # for test:
-    # #nn_raa = np.copy(raa)
-    #
-    # # Read latitude, longitude
-    # latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
-    # longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
-    #
-    # # Read per-pixel wavelength
-    # wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
-    #
-    # # Read day in the year
-    # yday = get_yday(product, reshape=False)
-    #
-    # # Read meteo data
-    # pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
-    # ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
-    # tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
-    # wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
-    # wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
-    # windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
-    #
-    # # Read LUTs
-    # if sensor == 'OLCI':
-    #     file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-    #     file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-    #     file_adf_clp = default_ADF['OLCI']['file_adf_clp']
-    #     adf_acp = luts_olci.LUT_ACP(file_adf_acp)
-    #     adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
-    #     adf_clp = luts_olci.LUT_CLP(file_adf_clp)
-    #     if correction == 'HYGEOS':
-    #         LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
-    # #elif sensor == 'S2' TODO
-    #
-    # print("Pre-corrections")
-    # # Gaseous correction
-    # rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
-    #         pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
-    #
-    # # Compute diffuse transmittance (Rayleigh)
-    # td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
-    #
-    # # Glint correction
-    # rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-    #
-    # if correction == 'IPF':
-    #     # Glint correction
-    #     rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-    #
-    #     # White-caps correction
-    #     #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
-    #
-    #     # Rayleigh correction
-    #     rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
-    #
-    # elif correction == 'HYGEOS':
-    #     # Glint correction - required only to get rho_g in the AC
-    #     rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-    #
-    #     #LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
-    #     # Glint + Rayleigh correction
-    #     rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
-    #     #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-    #     #													  pressure, windm, lut_hygeos)
-    #
-    #
-    # # Atmospheric model
-    # print("Compute atmospheric matrices")
-    # Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
-    #
-    # # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    # print("Inversion")
-    # niop = 5
-    # iop = np.zeros((npix,niop)) + np.NaN
-    # percent_old = 0
-    # ipix_proc = 0
-    # npix_proc = np.count_nonzero(valid)
-    # for ipix in range(npix):
-    #     if not valid[ipix]: continue
-    #     # Display processing progress with respect to the valid pixels
-    #     percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
-    #     if percent != percent_old:
-    #         percent_old = percent
-    #         sys.stdout.write(" ...%d%%"%percent)
-    #         sys.stdout.flush()
-    #     # First guess
-    #     #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-    #     iop_0 = np.array([-3., -3., -3., -3., -3.])
-    #     # Nelder-Mead optimization
-    #     #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-    #     args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-    #     NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
-    #     iop[ipix,:] = NM_res.x
-    #     #success = NM_res.success TODO add a flag in the Level-2 output to get this info
-    #     ipix_proc += 1
-    # print("")
-    #
-    # # Compute the final residual
-    # print("Compute final residual")
-    # rho_wmod = np.zeros((npix, nbands)) + np.NaN
-    # #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
-    # rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
-    # rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
-    # rho_ag = rho_rc - td*rho_wmod
-    # coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
-    # rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
-    # rho_w = (rho_rc - rho_ag_mod)/td
-    #
-    # # Set absorption band to NaN
-    # rho_w[:,iband_abs] = np.NaN
-    #
-    # # TODO Normalisation
-    # # rho_wn =
-    #
-    # # TODO uncertainties
-    # # unc_rhow =
+    # Read geometry and compute relative azimuth angle
+    oaa, oza, saa, sza = angle_Reader(product, sensor)
+    raa, nn_raa = calculate_diff_azim(oaa, saa)
+
+    if sensor == 'OLCI':
+        # Read per-pixel wavelength
+        wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
+        # Read latitude, longitude
+        latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
+        longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
+    elif sensor == 'S2MSI': #todo
+        wavelength = []
+        # Read latitude, longitude
+       # latitude = get_band_or_tiePointGrid(product, 'Latitude', reshape=False)
+       # longitude = get_band_or_tiePointGrid(product, 'Longitude', reshape=False)
+
+    # Read day in the year
+    yday = get_yday(product, reshape=False)
+    print(yday)
+
+    if sensor == 'OLCI':
+        # Read meteo data
+        pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
+        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
+        tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
+        wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
+        wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
+        windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
+    elif sensor == 'S2MSI':
+        default_ozone = 330. #DU
+        default_pressure = 1000. #hPa
+
+        if atmosphericAuxDataPath != None:
+            checkAuxDataAvailablity(atmosphericAuxDataPath, product)
+            ozone, pressure, tcwv, wind_u, wind_v = setAuxData(product, atmosphericAuxDataPath)
+
+
+
+    # Read LUTs
+    if sensor == 'OLCI':
+        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
+        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
+        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
+        adf_acp = luts_olci.LUT_ACP(file_adf_acp)
+        adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
+        adf_clp = luts_olci.LUT_CLP(file_adf_clp)
+        if correction == 'HYGEOS':
+            LUT_HYGEOS = lut_hygeos.LUT(default_ADF['OLCI']['file_HYGEOS'])
+    #elif sensor == 'S2' TODO
+
+    print("Pre-corrections")
+    # Gaseous correction
+    rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
+            pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
+
+    # Compute diffuse transmittance (Rayleigh)
+    td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
+
+    # Glint correction
+    rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+
+    if correction == 'IPF':
+        # Glint correction
+        rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+
+        # White-caps correction
+        #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+
+        # Rayleigh correction
+        rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
+
+    elif correction == 'HYGEOS':
+        # Glint correction - required only to get rho_g in the AC
+        rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+
+        #LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
+        # Glint + Rayleigh correction
+        rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
+        #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+        #													  pressure, windm, lut_hygeos)
+
+
+    # Atmospheric model
+    print("Compute atmospheric matrices")
+    Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
+
+    # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+    print("Inversion")
+    niop = 5
+    iop = np.zeros((npix,niop)) + np.NaN
+    percent_old = 0
+    ipix_proc = 0
+    npix_proc = np.count_nonzero(valid)
+    for ipix in range(npix):
+        if not valid[ipix]: continue
+        # Display processing progress with respect to the valid pixels
+        percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
+        if percent != percent_old:
+            percent_old = percent
+            sys.stdout.write(" ...%d%%"%percent)
+            sys.stdout.flush()
+        # First guess
+        #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
+        iop_0 = np.array([-3., -3., -3., -3., -3.])
+        # Nelder-Mead optimization
+        #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
+        iop[ipix,:] = NM_res.x
+        #success = NM_res.success TODO add a flag in the Level-2 output to get this info
+        ipix_proc += 1
+    print("")
+
+    # Compute the final residual
+    print("Compute final residual")
+    rho_wmod = np.zeros((npix, nbands)) + np.NaN
+    #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
+    rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
+    rho_ag = rho_rc - td*rho_wmod
+    coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
+    rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
+    rho_w = (rho_rc - rho_ag_mod)/td
+
+    # Set absorption band to NaN
+    rho_w[:,iband_abs] = np.NaN
+
+    # TODO Normalisation
+    # rho_wn =
+
+    # TODO uncertainties
+    # unc_rhow =
 
     ###
     # Writing a product
