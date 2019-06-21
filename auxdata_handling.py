@@ -42,80 +42,130 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
 
     return var
 
-def setAuxData(product, atmosphericAuxDataPath):
+
+def getGeoPositionsForS2Product(product):
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
 
-    if os.path.exists(atmosphericAuxDataPath):
+    latitude = np.zeros((height, width))
+    longitude = np.zeros((height, width))
 
-        files = glob.glob(atmosphericAuxDataPath + '/**/*.hdf*', recursive=True)
-
-        ##
-        # m_wind, z_wind, p_water -> precipitable water [kg/m^2], rel_hum, press [mbar]
-        met_fname_parts = ["_MET_NCEPR2_6h.hdf",
-                           "_MET_NCEPN_6h.hdf"]  # "_MET_NCEPR2_6h.hdf.bz2", "_MET_NCEPN_6h.hdf.bz2"
-        metFiles = []
-        for fn in files:
-            for pf in met_fname_parts:
-                if pf in fn:
-                    metFiles.append(fn)
-
-        ozone_fname_parts = ["_O3_TOMSOMI_24h.hdf", "_O3_N7TOMS_24h.hdf", "_O3_EPTOMS_24h.hdf", "_O3_AURAOMI_24h.hdf"]
-        # "_O3_TOMSOMI_24h.hdf.bz2", "_O3_N7TOMS_24h.hdf.bz2", "_O3_EPTOMS_24h.hdf.bz2","_O3_AURAOMI_24h.hdf.bz2"
-        ozoneFiles = []
-        for fn in files:
-            for pf in ozone_fname_parts:
-                if pf in fn:
-                    ozoneFiles.append(fn)
-
-        # Extraction and Interpolation of ozone and pressure values, by lat, lon; by time.
-        # Extract: corners of the product; everything inbetween and surrounding the outlines;
-        # If the values are not changing that much, set to fixed value.
-        # Else: Interpolate for all pixels on this small dataset.
-
-        tomsomiStartProduct = snp.ProductIO.readProduct(ozoneFiles[0])
-        tomsomiEndProduct = snp.ProductIO.readProduct(ozoneFiles[1])
-
-        ozoneStart = get_band_or_tiePointGrid(tomsomiStartProduct, 'ozone', reshape=True)
-        ozoneEnd = get_band_or_tiePointGrid(tomsomiEndProduct, 'ozone', reshape=True)
-
-        cornerX = [0 + 0.5, 0 + 0.5, width - 0.5, width - 0.5]
-        cornerY = [0 + 0.5, height - 0.5, 0 + 0.5, height - 0.5]
-        cornerLat = []
-        cornerLon = []
-        for x, y in zip(cornerX, cornerY):
+    for x in range(width):
+        for y in range(height):
             pixelPos = PixelPos(x + 0.5, y + 0.5)
             geoPos = product.getSceneGeoCoding().getGeoPos(pixelPos, None)
-            cornerLat.append(geoPos.getLat() + 90.)  # only positive indeces!
-            if geoPos.getLon() < 0:
-                cornerLon.append(360 - geoPos.getLon())
-            else:
-                cornerLon.append(geoPos.getLon())
+            latitude[y,x] = geoPos.getLat()
+            longitude[y, x] = geoPos.getLon()
 
-        minLat = np.min(cornerLat)
-        maxLat = np.max(cornerLat)
-        minLon = np.min(cornerLon)
-        maxLon = np.max(cornerLon)
+    return latitude, longitude
 
-        coordXmin = np.floor(minLon)
-        coordXmax = np.round(maxLon)
-        if coordXmax < maxLon:
-            coordXmax += 1
 
-        coordYmin = np.floor(minLat)
-        coordYmax = np.round(maxLat)
-        if coordYmax < maxLat:
-            coordYmax += 1
+def findProductCornerInAuxData(product):
+    width = product.getSceneRasterWidth()
+    height = product.getSceneRasterHeight()
 
-        a = ozoneStart[coordYmin.astype(np.int32):coordYmax.astype(np.int32),
-            coordXmin.astype(np.int32):coordXmax.astype(np.int32)]
-        print(a)
-        b = ozoneEnd[coordYmin.astype(np.int32):coordYmax.astype(np.int32),
-            coordXmin.astype(np.int32):coordXmax.astype(np.int32)]
-        print(b)
+    cornerX = [0 + 0.5, 0 + 0.5, width - 0.5, width - 0.5]
+    cornerY = [0 + 0.5, height - 0.5, 0 + 0.5, height - 0.5]
+    cornerLat = []
+    cornerLon = []
+    for x, y in zip(cornerX, cornerY):
+        pixelPos = PixelPos(x + 0.5, y + 0.5)
+        geoPos = product.getSceneGeoCoding().getGeoPos(pixelPos, None)
+        cornerLat.append(geoPos.getLat() + 90.)  # only positive indeces!
+        if geoPos.getLon() < 0:
+            cornerLon.append(360 - geoPos.getLon())
+        else:
+            cornerLon.append(geoPos.getLon())
 
-    ozone, pressure, tcwv, wind_u, wind_v = np.zeros((width, height))
-    return 0
+    minLat = np.min(cornerLat)
+    maxLat = np.max(cornerLat)
+    minLon = np.min(cornerLon)
+    maxLon = np.max(cornerLon)
+
+    coordXmin = np.floor(minLon)
+    coordXmax = np.round(maxLon)
+    if coordXmax < maxLon:
+        coordXmax += 1
+
+    coordYmin = np.floor(minLat)
+    coordYmax = np.round(maxLat)
+    if coordYmax < maxLat:
+        coordYmax += 1
+
+    return coordXmin.astype(np.int32), coordXmax.astype(np.int32), coordYmin.astype(np.int32), coordYmax.astype(np.int32)
+
+
+def setAuxData(product, AuxFullFilePath_dict):
+
+    # #
+    # m_wind, z_wind, p_water -> precipitable water [kg/m^2], rel_hum, press [mbar]
+    # met_fname_parts = ["_MET_NCEPR2_6h.hdf",
+    #                    "_MET_NCEPN_6h.hdf"]  # "_MET_NCEPR2_6h.hdf.bz2", "_MET_NCEPN_6h.hdf.bz2"
+    # metFiles = []
+    # for fn in files:
+    #     for pf in met_fname_parts:
+    #         if pf in fn:
+    #             metFiles.append(fn)
+    #
+    # ozone_fname_parts = ["_O3_TOMSOMI_24h.hdf", "_O3_N7TOMS_24h.hdf", "_O3_EPTOMS_24h.hdf", "_O3_AURAOMI_24h.hdf"]
+    # # "_O3_TOMSOMI_24h.hdf.bz2", "_O3_N7TOMS_24h.hdf.bz2", "_O3_EPTOMS_24h.hdf.bz2","_O3_AURAOMI_24h.hdf.bz2"
+    # ozoneFiles = []
+    # for fn in files:
+    #     for pf in ozone_fname_parts:
+    #         if pf in fn:
+    #             ozoneFiles.append(fn)
+    #
+    # Extraction and Interpolation of ozone and pressure values, by lat, lon; by time.
+    # Extract: corners of the product; everything inbetween and surrounding the outlines;
+    # If the values are not changing that much, set to fixed value.
+    # Else: Interpolate for all pixels on this small dataset.
+
+    auxData = {
+        'ozone': 330. , # DU
+        'pressure': 1000., #hPa
+        'tcwv': 0.,
+        'wind_u': 0.,
+        'wind_v': 0.
+    }
+
+    print(AuxFullFilePath_dict['ozone'][0])
+    ozoneStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][0])
+    ozoneEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][1])
+
+    ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone', reshape=True)
+    ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone', reshape=True)
+    ozoneStartProduct.closeProductReader()
+    ozoneEndProduct.closeProductReader()
+
+    coordXmin, coordXmax, coordYmin, coordYmax = findProductCornerInAuxData(product)
+
+    a = ozoneStart[coordYmin:coordYmax, coordXmin:coordXmax]
+    print(a)
+    b = ozoneEnd[coordYmin:coordYmax, coordXmin:coordXmax]
+    print(b)
+    ##
+    # averaging the ozone values spatially and temporally...
+    auxData['ozone'] = np.mean((a+b)/2.)
+
+    METStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][0])
+    METEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][1])
+
+    met_variable_names = {'pressure':'press', 'wind_u': 'z_wind', 'wind_v': 'm_wind', 'tcwv':'p_water'}
+
+    for key in met_variable_names.keys():
+        metStart = get_band_or_tiePointGrid(METStartProduct, met_variable_names[key], reshape=True)
+        metEnd = get_band_or_tiePointGrid(METEndProduct,  met_variable_names[key], reshape=True)
+        a = metStart[coordYmin:coordYmax, coordXmin:coordXmax]
+        b = metEnd[coordYmin:coordYmax, coordXmin:coordXmax]
+        ##
+        # averaging the MET values spatially and temporally...
+        auxData[key] = np.mean((a + b)/2.)
+
+    METStartProduct.closeProductReader()
+    METEndProduct.closeProductReader()
+
+    return auxData
+
 
 def yearAndDoyAndHourUTC(dateMJD):
     utc = ProductDataUTC(dateMJD)
@@ -178,18 +228,20 @@ def checkAuxDataAvailablity(pathAuxDataRep, product):
         startFilePath = pathAuxDataRep + str(year) + '\\'+ "%03d" % doy + '\\'
 
         if os.path.exists(startFilePath):
-            fullStartFilePath = [fn for fn in files if startFilePath + startFilePrefix in fn]
+            fullStartFilePathOzone = [fn for fn in files if startFilePath + startFilePrefix in fn and 'O3' in fn]
         else:
             # download the missing ozone data!!
-            fullStartFilePath = ''
+            print('Warning: Ozone data for first day is missing. Automatic download not yet implemented.')
+            fullStartFilePathOzone = ''
 
         year, doy, h = yearAndDoyAndHourUTC(endTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
         if os.path.exists(startFilePath):
-            fullEndFilePath = [fn for fn in files if startFilePath + endFilePrefix in fn]
+            fullEndFilePathOzone = [fn for fn in files if startFilePath + endFilePrefix in fn and 'O3' in fn]
         else:
             # download the missing ozone data!!
-            fullEndFilePath = ''
+            print('Warning: Ozone data for second day is missing. Automatic download not yet implemented.')
+            fullEndFilePathOzone = ''
 
     ###
     # for meteorology:
@@ -203,7 +255,7 @@ def checkAuxDataAvailablity(pathAuxDataRep, product):
         year, doy, h = yearAndDoyAndHourUTC(startTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
         if os.path.exists(startFilePath):
-            fullStartFilePathMET = [fn for fn in files if startFilePath + startFilePrefix in fn]
+            fullStartFilePathMET = [fn for fn in files if startFilePath + startFilePrefix in fn and not '.bz2' in fn]
         else:
             # download the missing meteorology data!!
             fullStartFilePathMET = ''
@@ -211,7 +263,7 @@ def checkAuxDataAvailablity(pathAuxDataRep, product):
         year, doy, h = yearAndDoyAndHourUTC(endTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
         if os.path.exists(startFilePath):
-            fullEndFilePathMET = [fn for fn in files if startFilePath + endFilePrefix in fn]
+            fullEndFilePathMET = [fn for fn in files if startFilePath + endFilePrefix in fn and not '.bz2' in fn]
         else:
             # download the missing meteorology data!!
             fullEndFilePathMET = ''
@@ -225,5 +277,9 @@ def checkAuxDataAvailablity(pathAuxDataRep, product):
     # ozoneFormat = AncillaryCommons.createOzoneFormat(ozone)
     # pressureFormat = AncillaryCommons.createPressureFormat(surfacePressure)
     # auxdata = new AtmosphericAuxdataDynamic(ancRepository, ozoneFormat, pressureFormat)
+    out_dict = {
+        'ozone': [fullStartFilePathOzone[0], fullEndFilePathOzone[0]],
+        'MET': [fullStartFilePathMET[0], fullEndFilePathMET[0]]
+    }
 
-    return 0
+    return out_dict
