@@ -2,6 +2,7 @@ import os
 import glob
 import numpy as np
 import sys
+import requests
 
 sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
 import snappy as snp
@@ -203,16 +204,42 @@ def InterpolationBorderComputer6H(timeMJD):
     EndAncFilePrefix = convertToFileNamePrefix(startFileTimeMJD + 0.25)
     return StartAncFilePrefix, EndAncFilePrefix
 
+def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
+    url = "https://oceandata.sci.gsfc.nasa.gov/cgi/getfile/"
+
+    file_ext_list_Dict = {
+        'ozone' : ["00_O3_AURAOMI_24h.hdf"],
+        'met' :   ["00_MET_NCEPR2_6h.hdf.bz2", "00_MET_NCEP_6h.hdf", "06_MET_NCEPR2_6h.hdf.bz2",
+                     "06_MET_NCEP_6h.hdf", "12_MET_NCEPR2_6h.hdf.bz2", "12_MET_NCEP_6h.hdf", "18_MET_NCEPR2_6h.hdf.bz2",
+                     "18_MET_NCEP_6h.hdf"]
+    }
+
+    file_ext_list = file_ext_list_Dict[type]
+
+    dest_path = rep_path + str(year)
+    if not os.path.exists(dest_path):
+        os.mkdir(dest_path)
+    dest_path = rep_path + str(year) + '\\%03d' % int(doy) + '\\'
+    if not os.path.exists(dest_path):
+        os.mkdir(dest_path)
+
+    for file_ext in file_ext_list:
+        outname = "N%4d%03d" % (year, doy) + file_ext
+        thisurl = url + "/N%4d%03d" % (year, doy) + file_ext
+
+        if not os.path.exists(dest_path + outname):
+            try:
+                r = requests.get(thisurl, allow_redirects=True)
+                # open method to open a file on your system and write the contents
+                with open(dest_path + outname, "wb") as code:
+                    code.write(r.content)
+                code.close()
+            except:
+                break
+
+
 def checkAuxDataAvailablity(pathAuxDataRep, product):
-    width = product.getSceneRasterWidth()
-    height = product.getSceneRasterHeight()
-
     startTime = product.getStartTime()
-    # dateString = startTime.getElemString()
-    # date = startTime.getAsDate().getTime()
-    # year = startTime.getAsDate().getYear() + 1900
-
-    download_path = "http://oceandata.sci.gsfc.nasa.gov/cgi/getfile/"
 
     dateMJD = startTime.getMJD()
     ###
@@ -220,63 +247,38 @@ def checkAuxDataAvailablity(pathAuxDataRep, product):
     startTime, endTime = StartAndEndFileTimeMJD24H(dateMJD)
     startFilePrefix, endFilePrefix = InterpolationBorderComputer24H(dateMJD)
 
-    # does ozone file exist?
     if os.path.exists(pathAuxDataRep):
-        files = glob.glob(pathAuxDataRep + '/**/*.hdf*', recursive=True)
-
         year, doy, h = yearAndDoyAndHourUTC(startTime)
         startFilePath = pathAuxDataRep + str(year) + '\\'+ "%03d" % doy + '\\'
-
-        if os.path.exists(startFilePath):
-            fullStartFilePathOzone = [fn for fn in files if startFilePath + startFilePrefix in fn and 'O3' in fn]
-        else:
-            # download the missing ozone data!!
-            print('Warning: Ozone data for first day is missing. Automatic download not yet implemented.')
-            fullStartFilePathOzone = ''
+        check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='ozone')
+        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
+        fullStartFilePathOzone = [fn for fn in files if startFilePath + startFilePrefix in fn and 'O3' in fn]
 
         year, doy, h = yearAndDoyAndHourUTC(endTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
-        if os.path.exists(startFilePath):
-            fullEndFilePathOzone = [fn for fn in files if startFilePath + endFilePrefix in fn and 'O3' in fn]
-        else:
-            # download the missing ozone data!!
-            print('Warning: Ozone data for second day is missing. Automatic download not yet implemented.')
-            fullEndFilePathOzone = ''
+        check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='ozone')
+        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
+        fullEndFilePathOzone = [fn for fn in files if startFilePath + endFilePrefix in fn and 'O3' in fn]
 
     ###
     # for meteorology:
     startTime, endTime = StartAndEndFileTimeMJD6H(dateMJD)
     startFilePrefix, endFilePrefix = InterpolationBorderComputer6H(dateMJD)
 
-    # does meteorology file exist?
     if os.path.exists(pathAuxDataRep):
-        files = glob.glob(pathAuxDataRep + '/**/*.hdf*', recursive=True)
 
         year, doy, h = yearAndDoyAndHourUTC(startTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
-        if os.path.exists(startFilePath):
-            fullStartFilePathMET = [fn for fn in files if startFilePath + startFilePrefix in fn and not '.bz2' in fn]
-        else:
-            # download the missing meteorology data!!
-            fullStartFilePathMET = ''
+        check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='met')
+        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
+        fullStartFilePathMET = [fn for fn in files if startFilePath + startFilePrefix in fn and not '.bz2' in fn]
 
         year, doy, h = yearAndDoyAndHourUTC(endTime)
         startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
-        if os.path.exists(startFilePath):
-            fullEndFilePathMET = [fn for fn in files if startFilePath + endFilePrefix in fn and not '.bz2' in fn]
-        else:
-            # download the missing meteorology data!!
-            fullEndFilePathMET = ''
+        check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='met')
+        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
+        fullEndFilePathMET = [fn for fn in files if startFilePath + endFilePrefix in fn and not '.bz2' in fn]
 
-
-    #ancDownloader = AncDownloader(download_path)
-    #ancDownloader.download(File(fullEndFilePathMET))
-    # ancRepository = AncRepository( File(atmosphericAuxDataPath), ancDownloader)
-    # ozone = np.array(330., dtype='float64')
-    # surfacePressure = np.array(1000., dtype='float64')
-    # ozoneFormat = AncillaryCommons.createOzoneFormat(ozone)
-    # pressureFormat = AncillaryCommons.createPressureFormat(surfacePressure)
-    # auxdata = new AtmosphericAuxdataDynamic(ancRepository, ozoneFormat, pressureFormat)
     out_dict = {
         'ozone': [fullStartFilePathOzone[0], fullEndFilePathOzone[0]],
         'MET': [fullStartFilePathMET[0], fullEndFilePathMET[0]]
