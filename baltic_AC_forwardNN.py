@@ -49,7 +49,7 @@ import get_bands
 from misc import default_ADF, nlinear
 import luts_olci
 import lut_hygeos
-from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product
+from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # Set locale for proper time reading with datetime
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
@@ -133,19 +133,29 @@ def get_yday(product,reshape=True):
     height = product.getSceneRasterHeight()
     width = product.getSceneRasterWidth()
 
-    # Get yday of each row
-    dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
-    dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
-    dstart = np.datetime64(dstart)
-    dstop = np.datetime64(dstop)
-    dpix = dstart + (dstop-dstart)/float(height-1.)*np.arange(height)
-    yday = [k.timetuple().tm_yday for k in dpix.astype(datetime.datetime)]
+    ## time handling for match-up files
+    if str(product.getFileLocation()).endswith('.txt') or str(product.getFileLocation()).endswith('.csv'):
+        yday = np.zeros((height, width))
+        for y in range(height):
+            for x in range(width):
+                a = product.getSceneTimeCoding().getMJD(PixelPos(x + 0.5, y + 0.5))
+                year, yday[y, x], hour = yearAndDoyAndHourUTC(a)
 
-    # Apply to all columns
-    yday = np.array(yday*width).reshape(width,height).transpose()
+    else:
+        ## time handling for a scene
+        # Get yday of each row
+        dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
+        dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
+        dstart = np.datetime64(dstart)
+        dstop = np.datetime64(dstop)
+        dpix = dstart + (dstop-dstart)/float(height-1.)*np.arange(height)
+        yday = [k.timetuple().tm_yday for k in dpix.astype(datetime.datetime)]
 
-    if not reshape:
-        yday = np.ravel(yday)
+        # Apply to all columns
+        yday = np.array(yday*width).reshape(width,height).transpose()
+
+        if not reshape:
+            yday = np.ravel(yday)
 
     return yday
 
@@ -675,7 +685,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         # Read latitude, longitude
         latitude, longitude = getGeoPositionsForS2Product(product)
 
-    # Read day in the year
+    # Read day in the year; for scenes and match-up files
     yday = get_yday(product, reshape=False)
     print(yday)
 
@@ -688,17 +698,28 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
         windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
     elif sensor == 'S2MSI':
-        if atmosphericAuxDataPath != None:
-            AuxFullFilePath_dict = checkAuxDataAvailablity(atmosphericAuxDataPath, product)
-            AuxDataDict = setAuxData(product, AuxFullFilePath_dict)
-            pressure = AuxDataDict['pressure']
-            ozone = AuxDataDict['ozone']
-            tcwv = AuxDataDict['tcwv']
-            wind_u = AuxDataDict['wind_u']
-            wind_v = AuxDataDict['wind_v']
-            windm = np.sqrt(wind_v*wind_v + wind_u*wind_u)
+        bandNames = list(product.getBandNames())
+        ## only for match-up data with included meteorology.
+        if ('pressure' in bandNames) and ('ozone' in bandNames) and ('tcwv' in bandNames)\
+                and ('wind_u' in bandNames) and ('wind_v' in bandNames):
+            pressure = get_band_or_tiePointGrid(product, 'pressure', reshape=False)
+            ozone = get_band_or_tiePointGrid(product, 'ozone', reshape=False)
+            tcwv = get_band_or_tiePointGrid(product, 'tcwv', reshape=False)
+            wind_u = get_band_or_tiePointGrid(product, 'wind_u', reshape=False)
+            wind_v = get_band_or_tiePointGrid(product, 'wind_v', reshape=False)
+            windm = np.sqrt(wind_v * wind_v + wind_u * wind_u)
         else:
-            print('Please set a path to the AUX data archive.')
+            if atmosphericAuxDataPath != None:
+                AuxFullFilePath_dict = checkAuxDataAvailablity(atmosphericAuxDataPath, product)
+                AuxDataDict = setAuxData(product, AuxFullFilePath_dict)
+                pressure = AuxDataDict['pressure']
+                ozone = AuxDataDict['ozone']
+                tcwv = AuxDataDict['tcwv']
+                wind_u = AuxDataDict['wind_u']
+                wind_v = AuxDataDict['wind_v']
+                windm = np.sqrt(wind_v*wind_v + wind_u*wind_u)
+            else:
+                print('Please set a path to the AUX data archive.')
 
 
 
