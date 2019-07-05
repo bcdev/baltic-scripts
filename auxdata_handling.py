@@ -3,6 +3,8 @@ import glob
 import numpy as np
 import sys
 import requests
+import datetime
+from datetime import date
 
 sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
 import snappy as snp
@@ -95,8 +97,34 @@ def findProductCornerInAuxData(product):
 
     return coordXmin.astype(np.int32), coordXmax.astype(np.int32), coordYmin.astype(np.int32), coordYmax.astype(np.int32)
 
+def findSinglePositionInAuxData(Lat, Lon):
 
-def setAuxData(product, AuxFullFilePath_dict):
+    cornerLat = []
+    cornerLon = []
+    cornerLat.append(Lat + 90.)  # only positive indeces!
+    if Lon < 0:
+        cornerLon.append(360 - Lon)
+    else:
+        cornerLon.append(Lon)
+
+    minLat = np.min(cornerLat)
+    maxLat = np.max(cornerLat)
+    minLon = np.min(cornerLon)
+    maxLon = np.max(cornerLon)
+
+    coordXmin = np.floor(minLon)
+    coordXmax = np.round(maxLon)
+    if coordXmax < maxLon:
+        coordXmax += 1
+
+    coordYmin = np.floor(minLat)
+    coordYmax = np.round(maxLat)
+    if coordYmax < maxLat:
+        coordYmax += 1
+
+    return coordXmin.astype(np.int32), coordXmax.astype(np.int32), coordYmin.astype(np.int32), coordYmax.astype(np.int32)
+
+def setAuxData(product, AuxFullFilePath_dict, singlePosition=False, Lat=None, Lon=None):
 
     # #
     # m_wind, z_wind, p_water -> precipitable water [kg/m^2], rel_hum, press [mbar]
@@ -124,46 +152,78 @@ def setAuxData(product, AuxFullFilePath_dict):
     auxData = {
         'ozone': 330. , # DU
         'pressure': 1000., #hPa
-        'tcwv': 0.,
+        'tcwv': 10.,
         'wind_u': 0.,
         'wind_v': 0.
     }
 
     print(AuxFullFilePath_dict['ozone'][0])
-    ozoneStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][0])
-    ozoneEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][1])
+    OzoneStartFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][0]) > 1000
+    OzoneEndFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][1]) > 1000
+    if OzoneStartFileValid:
+        ozoneStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][0])
+        ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone', reshape=True)
+        ozoneStartProduct.closeProductReader()
+    if OzoneEndFileValid:
+        ozoneEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][1])
+        ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone', reshape=True)
+        ozoneEndProduct.closeProductReader()
 
-    ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone', reshape=True)
-    ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone', reshape=True)
-    ozoneStartProduct.closeProductReader()
-    ozoneEndProduct.closeProductReader()
+    if singlePosition:
+        coordXmin, coordXmax, coordYmin, coordYmax = findSinglePositionInAuxData(Lat, Lon)
+    else:
+        coordXmin, coordXmax, coordYmin, coordYmax = findProductCornerInAuxData(product)
 
-    coordXmin, coordXmax, coordYmin, coordYmax = findProductCornerInAuxData(product)
-
-    a = ozoneStart[coordYmin:coordYmax, coordXmin:coordXmax]
-    print(a)
-    b = ozoneEnd[coordYmin:coordYmax, coordXmin:coordXmax]
-    print(b)
+    a = None
+    b = None
+    if OzoneStartFileValid:
+        a = ozoneStart[coordYmin:coordYmax, coordXmin:coordXmax]
+        print(a)
+    if OzoneEndFileValid:
+        b = ozoneEnd[coordYmin:coordYmax, coordXmin:coordXmax]
+        print(b)
     ##
     # averaging the ozone values spatially and temporally...
-    auxData['ozone'] = np.mean((a+b)/2.)
+    if OzoneStartFileValid and OzoneEndFileValid:
+        auxData['ozone'] = np.mean((a+b)/2.)
+    else:
+        if OzoneStartFileValid and not OzoneEndFileValid:
+            auxData['ozone'] = np.mean(a)
+        elif not OzoneStartFileValid and OzoneEndFileValid:
+            auxData['ozone'] = np.mean(b)
+        #else: remain with default values.
 
-    METStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][0])
-    METEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][1])
+    MetStartFileValid = os.path.getsize(AuxFullFilePath_dict['MET'][0]) > 1000
+    MetEndFileValid = os.path.getsize(AuxFullFilePath_dict['MET'][1]) > 1000
+    if MetStartFileValid:
+        METStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][0])
+    if MetEndFileValid:
+        METEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['MET'][1])
 
     met_variable_names = {'pressure':'press', 'wind_u': 'z_wind', 'wind_v': 'm_wind', 'tcwv':'p_water'}
 
     for key in met_variable_names.keys():
-        metStart = get_band_or_tiePointGrid(METStartProduct, met_variable_names[key], reshape=True)
-        metEnd = get_band_or_tiePointGrid(METEndProduct,  met_variable_names[key], reshape=True)
-        a = metStart[coordYmin:coordYmax, coordXmin:coordXmax]
-        b = metEnd[coordYmin:coordYmax, coordXmin:coordXmax]
+        if MetStartFileValid:
+            metStart = get_band_or_tiePointGrid(METStartProduct, met_variable_names[key], reshape=True)
+            a = metStart[coordYmin:coordYmax, coordXmin:coordXmax]
+        if MetEndFileValid:
+            metEnd = get_band_or_tiePointGrid(METEndProduct,  met_variable_names[key], reshape=True)
+            b = metEnd[coordYmin:coordYmax, coordXmin:coordXmax]
         ##
         # averaging the MET values spatially and temporally...
-        auxData[key] = np.mean((a + b)/2.)
+        if MetStartFileValid and MetEndFileValid:
+            auxData[key] = np.mean((a + b) / 2.)
+        else:
+            if MetStartFileValid and not MetEndFileValid:
+                auxData[key] = np.mean(a)
+            elif not MetStartFileValid and MetEndFileValid:
+                auxData[key] = np.mean(b)
+            # else: remain with default values.
 
-    METStartProduct.closeProductReader()
-    METEndProduct.closeProductReader()
+    if MetStartFileValid:
+        METStartProduct.closeProductReader()
+    if MetEndFileValid:
+        METEndProduct.closeProductReader()
 
     return auxData
 
@@ -236,16 +296,42 @@ def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
                 code.close()
             except:
                 break
+        else:
+            if 'O3' in file_ext:
+                print(os.path.getsize(dest_path + outname))
+            if os.path.getsize(dest_path + outname) < 1000:
+                try:
+                    r = requests.get(thisurl, allow_redirects=True)
+                    # open method to open a file on your system and write the contents
+                    with open(dest_path + outname, "wb") as code:
+                        code.write(r.content)
+                    code.close()
+                except:
+                    break
 
 
-def checkAuxDataAvailablity(pathAuxDataRep, product):
-    startTime = product.getStartTime()
+def checkAuxDataAvailablity(pathAuxDataRep, product= None, startTime=None, fmt = '%Y%m%d'):
+    if product != None:
+        startTime = product.getStartTime()
+        dateMJD = startTime.getMJD()
+    else:
+        if startTime is None:
+            print("provide a product or the starting time of the product.")
+        else:
+            dt = datetime.datetime.strptime(startTime, fmt)
+            #tt = dt.timetuple()
+            d0 = date(2000, 1, 1)
+            delta = dt.date() - d0
+            print(delta.days)
 
-    dateMJD = startTime.getMJD()
+            dateMJD = delta.days
+
     ###
     # for ozone:
     startTime, endTime = StartAndEndFileTimeMJD24H(dateMJD)
     startFilePrefix, endFilePrefix = InterpolationBorderComputer24H(dateMJD)
+
+    print(startTime, endTime)
 
     if os.path.exists(pathAuxDataRep):
         year, doy, h = yearAndDoyAndHourUTC(startTime)
