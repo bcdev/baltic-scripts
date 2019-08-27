@@ -176,7 +176,7 @@ def diffuse_transmittance(sza, oza, pressure, adf_ppp):
 
     return td
 
-def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT):
+def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT, altitude=None):
     """
     Rayleigh + glint correction from HYGEOS LUT
     This includes correction for pressure and smile
@@ -189,9 +189,14 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
 
     # Compute Rayleigh optical thickness from Bodhaine
     co2 = 400.
-    altitude = 0.
+    if altitude is None:
+        altitude = 0.
+
     for i in range(tau_ray.shape[1]):
         tau_ray[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
+        test = rod(wavelength[:,i]/1000., co2, latitude, 0., pressure)
+
+
 
     # Compute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
     axes = [LUT.muv, LUT.raa, LUT.mus, LUT.tau, LUT.wind]
@@ -210,5 +215,5 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i]]
         rho_r[:,i] = nlinear(x, LUT.rho_mol, axes) # Rayleigh
 
-    return rho_r, rho_molgli, rho_rc
+    return rho_r, rho_molgli, rho_rc, tau_ray
 
