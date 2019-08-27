@@ -217,3 +217,17 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
 
     return rho_r, rho_molgli, rho_rc, tau_ray
 
+def vicarious_calibration(rho_ng, valid, adf_acp, sensor):
+    """
+    Apply SVC gains 
+    """
+    # TODO compute dedicated gains for Baltic+ AC
+    # TODO handle S2
+
+    rho_ng_prime = np.copy(rho_ng)
+    if sensor == 'OLCI':
+        for ib, band in enumerate(adf_acp.bands):
+            rho_ng_prime[:,ib] *= adf_acp.vicarious_gain[band]
+
+    return rho_ng_prime
+

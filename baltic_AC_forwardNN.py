@@ -44,7 +44,7 @@ Calendar = jpy.get_type('java.util.Calendar')
 
 
 # local import
-from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos
+from baltic_corrections import gas_correction, glint_correction, white_caps_correction, Rayleigh_correction, diffuse_transmittance, Rmolgli_correction_Hygeos, vicarious_calibration
 import get_bands
 from misc import default_ADF, nlinear
 import luts_olci
@@ -167,8 +167,8 @@ def get_yday(product,reshape=True):
         # Apply to all columns
         yday = np.array(yday*width).reshape(width,height).transpose()
 
-        if not reshape:
-            yday = np.ravel(yday)
+    if not reshape:
+        yday = np.ravel(yday)
 
     return yday
 
@@ -795,6 +795,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Gaseous correction
     rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
             pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
+
+    # Vicarious calibration
+    #rho_ng = vicarious_calibration(rho_ng, valid, adf_acp, sensor)
 
     # Compute diffuse transmittance (Rayleigh)
     td = diffuse_transmittance(sza, oza, pressure, adf_ppp)

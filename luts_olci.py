@@ -19,18 +19,19 @@ class LUT_ACP(object):
                             760,764,767,779,865,885,
                             900,940,1020], dtype=int) # TODO bands_sat should be define once for all in a unique global vector
         nband_sat = len(bands_sat)
+        self.bands = bands_sat
 
         grpname = 'glint_whitecaps'
         nci = netCDF4.Dataset(adffile, 'r')
         grp = nci.groups[grpname]
-        gain_vicarious = {}
+        vicarious_gain = {}
         for i, b in enumerate(bands_sat):
-            gain_vicarious[b] = grp.variables['gain_vicarious'][i]
+            vicarious_gain[b] = grp.variables['gain_vicarious'][i]
+        self.vicarious_gain = vicarious_gain
 
         grpname = 'standard_AC'
         grp = nci.groups[grpname]
         rho_r = grp.variables['rho_rayleigh_LUT'][:] # ref_press, bands, wind_speeds, SZA, VZA, RAA
-        #rho_r = rho_r.transpose(1,3,4,5,2,0) # [band,thetas,thetav,deltaphi,wind,pressure]
         self.rho_r = rho_r
         self.pressure = grp.variables['ref_press'][:]
         self.wind = grp.variables['wind_speeds'][:]
@@ -39,8 +40,6 @@ class LUT_ACP(object):
         self.raa = grp.variables['RAA'][:]
         nci.close()
 
-        self.bands = bands_sat
-        self.vicarious_gain = gain_vicarious
 
 class LUT_PPP(object):
     '''
