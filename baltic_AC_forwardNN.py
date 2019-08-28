@@ -54,24 +54,8 @@ from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPosition
 # Set locale for proper time reading with datetime
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
-# Select forward NN once for all
-nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net" # S3 OLCI
-#nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" # S2 MSI
-NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
-nnfile = open(nnFilePath, 'r')
-nnCode = nnfile.read()
-nn_iop_rw = NNffbpAlphaTabFast(nnCode)
-
-# NN for Normalisation
-nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net" #S3 OLCI
-#nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net" #S2 MSI
-nnfile = open(nnNormFilePath, 'r')
-nnCode = nnfile.read()
-nn_rw_rwnorm = NNffbpAlphaTabFast(nnCode)
-
-
-# Read NN input range once
-def read_NN_input_ranges_fromFile():
+def read_NN_input_ranges_fromFile(nnFilePath):
+    """ Read input range for the forward NN """
     input_range = {}
     with open(nnFilePath) as f:
         lines = f.readlines()
@@ -86,9 +70,6 @@ def read_NN_input_ranges_fromFile():
     f.close()
     return input_range
 
-inputRange = read_NN_input_ranges_fromFile()
-
-
 def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
     ##
     # This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
@@ -99,14 +80,7 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
     var = np.zeros(width * height, dtype=dtype)
     if name in list(product.getBandNames()):
         product.getBand(name).readPixels(0, 0, width, height, var)
-        # var.shape = (height, width)
-        # for i in range(height):
-        #     for j in range(width):
-        #         var[i, j] = product.getBand(name).getPixelDouble(i, j)
-        # var.shape = (height * width)
     elif name in list(product.getTiePointGridNames()):
-      #  product.getTiePointGrid(name).readPixels(0, 0, width, height, var)
-        #product.getTiePointGrid(name).getPixels(0, 0, width, height, var)
         var.shape = (height, width)
         for i in range(height):
             for j in range(width):
@@ -311,7 +285,7 @@ def check_valid_pixel_expression_L1(product, sensor):
 #     print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
 #     return prediction
 
-def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, T=15, S=35, nn=''):
+def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_iop_rw, T=15, S=35, nn=''):
     """
     Apply the forwardNN: IOP to rhow
     input: numpy array iop, shape = (Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
@@ -384,8 +358,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 
     return output
 
-def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, T=15, S = 35):
-
+def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_rw_rwnorm, T=15, S=35):
     """
     Apply NN :  rhow to rhownorm
     input: numpy array rhow, shape = (Npixels x wavelengths),
@@ -425,99 +398,6 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
 
     return output
 
-
-def write_BalticP_AC_Product_old(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None):
-    # Initialise the output product
-    File = jpy.get_type('java.io.File')
-    width = product.getSceneRasterWidth()
-    height = product.getSceneRasterHeight()
-    bandShape = (height, width)
-
-    balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-    balticPACProduct.setFileLocation(File(baltic__product_path))
-
-    ProductUtils.copyGeoCoding(product, balticPACProduct)
-    ProductUtils.copyTiePointGrids(product, balticPACProduct)
-
-    # Define total number of bands (TOA)
-    if (sensor == 'OLCI'):
-        nbands = 21
-    #elif (sensor == 'S2'): TODO
-
-    # Get TOA radiance sources for spectral band properties
-    bsources = [product.getBand("Oa%02d_radiance"%(i+1)) for i in range(nbands)]
-
-    # Create empty bands for spectral fields (note: number of spectral bands may differ)
-    for key in spectral_dict.keys():
-        data = spectral_dict[key].get('data')
-        if not data is None:
-            nbands_key = data.shape[-1]
-            for i in range(nbands_key):
-                brtoa_name = key + "_" + str(i + 1)
-                rtoaBand = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT32)
-                ProductUtils.copySpectralBandProperties(bsources[i], rtoaBand)
-                rtoaBand.setNoDataValue(np.nan)
-                rtoaBand.setNoDataValueUsed(True)
-
-    # Set auto grouping
-    autoGroupingString = ':'.join(spectral_dict.keys())
-    balticPACProduct.setAutoGrouping(autoGroupingString)
-
-    # Create empty bands for scalar fields
-    if not scalar_dict is None:
-        for key in scalar_dict.keys():
-            singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT32)
-            singleBand.setNoDataValue(np.nan)
-            singleBand.setNoDataValueUsed(True)
-
-    # Initialise writer
-    writer = ProductIO.getProductWriter('BEAM-DIMAP')
-    #writer = ProductIO.getProductWriter('CSV')
-    balticPACProduct.setProductWriter(writer)
-    balticPACProduct.writeHeader(baltic__product_path)
-    writer.writeProductNodes(balticPACProduct, baltic__product_path)
-
-    #Write Latitude, Longitude explicitly
-    geoBand = balticPACProduct.getBand('longitude')
-    geoBand.writeRasterDataFully()
-    geoBand = balticPACProduct.getBand('latitude')
-    geoBand.writeRasterDataFully()
-
-    # Write data of spectral fields
-    for key in spectral_dict.keys():
-        data = spectral_dict[key].get('data')
-        if not data is None:
-            nbands_key = data.shape[-1]
-            for i in range(nbands_key):
-                brtoa_name = key + "_" + str(i + 1)
-                rtoaBand = balticPACProduct.getBand(brtoa_name)
-                out = np.array(data[:, i]).reshape(bandShape)
-                rtoaBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-                                                                         ProgressMonitor.NULL)
-
-    # Write data of scalar fields
-    if not scalar_dict is None:
-        for key in scalar_dict.keys():
-            data = scalar_dict[key].get('data')
-            if not data is None:
-                singleBand = balticPACProduct.getBand(key)
-                out = np.array(data).reshape(bandShape)
-                singleBand.writeRasterData(0, 0, width, height, snp.ProductData.createInstance(np.float32(out)),
-                                                                          ProgressMonitor.NULL)
-
-
-    # # Create flag coding
-    # raycorFlagsBand = balticPACProduct.addBand('raycor_flags', ProductData.TYPE_UINT8)
-    # raycorFlagCoding = FlagCoding('raycor_flags')
-    # raycorFlagCoding.addFlag("testflag_1", 1, "Flag 1 for Rayleigh Correction")
-    # raycorFlagCoding.addFlag("testflag_2", 2, "Flag 2 for Rayleigh Correction")
-    # group = balticPACProduct.getFlagCodingGroup()
-    # group.add(raycorFlagCoding)
-    # raycorFlagsBand.setSampleCoding(raycorFlagCoding)
-
-    balticPACProduct.closeIO()
-
-
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None, copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
@@ -526,9 +406,11 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     bandShape = (height, width)
 
     if outputProductFormat == "BEAM-DIMAP":
-        baltic__product_path = baltic__product_path + '.dim'
+        dirname = os.path.dirname(baltic__product_path)
+        outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
+        baltic__product_path = os.path.join(dirname,outname+'.dim')
     elif outputProductFormat == 'CSV':
-        baltic__product_path = baltic__product_path + '.csv'
+        baltic__product_path = baltic__product_path
 
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
     balticPACProduct.setFileLocation(File(baltic__product_path))
@@ -545,7 +427,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
         data = spectral_dict[key].get('data')
         if not data is None:
             nbands_key = data.shape[-1]
-            print(nbands_key)
             if outputProductFormat == 'BEAM-DIMAP':
                 if sensor == 'OLCI':
                     bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
@@ -556,7 +437,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
 
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
-                print(brtoa_name)
                 band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
                 if outputProductFormat == 'BEAM-DIMAP':
                     ProductUtils.copySpectralBandProperties(bsources[i], band)
@@ -570,7 +450,6 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     # Create empty bands for scalar fields
     if not scalar_dict is None:
         for key in scalar_dict.keys():
-            print(key)
             singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT64)
             singleBand.setNoDataValue(np.nan)
             singleBand.setNoDataValueUsed(True)
@@ -638,7 +517,7 @@ def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
     return Aatm, Aatm_inv
 
-def check_and_constrain_iop(iop):
+def check_and_constrain_iop(iop, inputRange):
     for i, varn in enumerate(['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']):
         mi = inputRange[varn][0]
         ma = inputRange[varn][1]
@@ -649,7 +528,7 @@ def check_and_constrain_iop(iop):
     return iop
 
 
-def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid):
+def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid, nn_iop_rw, inputRange):
     """
     Cost function to be minimized, define for one pixel
     """
@@ -658,9 +537,9 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
     rho_wmod = np.zeros(nbands) + np.NaN
 
     # Check iop range and apply constraints to forwardNN input range
-    iop = check_and_constrain_iop(iop)
+    iop = check_and_constrain_iop(iop, inputRange)
 
-    rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
+    rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]),nn_iop_rw)
     # Compute rho_ag and fit best atmospheric model
     rho_ag = rho_rc - td*rho_wmod
     coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
@@ -681,9 +560,25 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
     """
 
-    # Option for IPF or HYGEOS glint+Rayleigh correction: 'IPF' or 'HYGEOS'
-    #correction = 'HYGEOS'
-    #correction = 'IPF'
+    # Define forward NN and normalisation NN
+    if sensor == 'OLCI':
+        nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net" 
+    elif sensor == 'S2MSI':
+        nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" 
+        nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
+
+    # Read the NNs
+    NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
+    nnfile = open(nnFilePath, 'r')
+    nnCode = nnfile.read()
+    nn_iop_rw = NNffbpAlphaTabFast(nnCode)
+    nnfile = open(nnNormFilePath, 'r')
+    nnCode = nnfile.read()
+    nn_rw_rwnorm = NNffbpAlphaTabFast(nnCode)
+
+    # Read forward NN input range
+    inputRange = read_NN_input_ranges_fromFile(nnFilePath)
 
     # Get sensor & AC bands
     bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_abs = get_bands.main(sensor,"dummy")
@@ -694,7 +589,6 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     iband_abs = np.searchsorted(bands_sat, bands_abs)
 
     # Initialising a product for Reading with snappy
-
     product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
 
     if sensor == "S2MSI" and product.isMultiSize():
@@ -714,40 +608,39 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Read L1B product and convert Radiance to reflectance
     rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
 
-
     # Classify pixels with Level-1 flags
     valid = check_valid_pixel_expression_L1(product, sensor)
 
-    # # Limit processing to sub-box
-    # if subset:
-    #     sline,eline,scol,ecol = subset
-    #     valid_subset = np.zeros((height,width),dtype='bool')
-    #     valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
-    #     print('subset, valid:', np.nansum(valid_subset))
-    #     valid = valid_subset.reshape(height*width)
-    #     del valid_subset
-    #
+    # Limit processing to sub-box
+    if subset: #FIXME should be only applied to input raster file
+         sline,eline,scol,ecol = subset
+         valid_subset = np.zeros((height,width),dtype='bool')
+         valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
+         valid = valid_subset.reshape(height*width)
+         del valid_subset
+    
     # Read geometry and compute relative azimuth angle
     oaa, oza, saa, sza = angle_Reader(product, sensor)
     raa, nn_raa = calculate_diff_azim(oaa, saa)
 
+    # Read wavelength (per-pixel for OLCI) and geolocation
     if sensor == 'OLCI':
         # Read per-pixel wavelength
         wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
         # Read latitude, longitude
         latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
         longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
-    elif sensor == 'S2MSI': #todo
-        wavelength = []
+    elif sensor == 'S2MSI':
+        # Duplicate wavelengths for all pixels
+        wavelength = np.tile(bands_sat,(len(sza),1)) #TODO: check S2 bands_sat correspond to exact wavelength
         # Read latitude, longitude
         latitude, longitude = getGeoPositionsForS2Product(product)
 
-    # Read day in the year; for scenes and match-up files
+    # Read day in the year
     yday = get_yday(product, reshape=False)
-    print(yday)
 
+    # Read meteo data
     if sensor == 'OLCI':
-        # Read meteo data
         pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
         ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
         tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
@@ -779,8 +672,6 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             else:
                 print('Please set a path to the AUX data archive.')
 
-
-
     # Read LUTs
     if sensor == 'OLCI':
         file_adf_acp = default_ADF['OLCI']['file_adf_acp']
@@ -804,13 +695,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Compute diffuse transmittance (Rayleigh)
     td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
 
-    # Glint correction
+    # Glint correction - rho_g required even for HYGEOS correction
     rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
 
     if correction == 'IPF':
-        # Glint correction
-        rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
         # White-caps correction
         #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
 
@@ -818,17 +706,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
 
     elif correction == 'HYGEOS':
-        # Glint correction - required only to get rho_g in the AC
-        rho_g, dummy = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
-        #LUT_HYGEOS = lut_hygeos.LUT('./auxdata/LUT.hdf')
         # Glint + Rayleigh correction
-        #rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT_HYGEOS)
         rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
                                                                      pressure, windm, LUT_HYGEOS, altitude)
-        #rho_r, rho_molgli, rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-        #													  pressure, windm, lut_hygeos)
-
 
     # Atmospheric model
     print("Compute atmospheric matrices")
@@ -853,8 +733,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
         iop_0 = np.array([-3., -3., -3., -3., -3.])
         # Nelder-Mead optimization
-        #args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
+        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix], nn_iop_rw, inputRange)
         NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
         iop[ipix,:] = NM_res.x
         #success = NM_res.success TODO add a flag in the Level-2 output to get this info
@@ -865,7 +744,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     print("Compute final residual")
     rho_wmod = np.zeros((npix, nbands)) + np.NaN
     #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
-    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid)
+    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid, nn_iop_rw)
     rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
     rho_ag = rho_rc - td*rho_wmod
     coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
@@ -877,7 +756,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Apply normalisation
     print("Normalize spectra")
-    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid)
+    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm)
 
     # TODO uncertainties
     # unc_rhow =
