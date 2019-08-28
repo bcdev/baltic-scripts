@@ -255,9 +255,11 @@ def check_valid_pixel_expression_L1(product, sensor):
         ## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
         ## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
         invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
-        land_mask = (np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31) | \
-                                (np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30)
-                                #(np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29)
+        land_mask = np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31
+        coastline_mask = np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30
+        inland_mask = np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29
+        land_mask = coastline_mask | (land_mask & ~inland_mask)
+
         bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
 
         invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
@@ -399,7 +401,7 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
     nBands = None
     if sensor == 'OLCI':
         nBands = 12
-    elif sensor == 'S2':
+    elif sensor == 'S2MSI':
         nBands = 6
     output = np.zeros((rhow.shape[0], nBands)) + np.NaN
 
@@ -407,8 +409,8 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
     # Launch the NN
     # Important:
     # OLCI input array has to be of size 17: [SZA, VZA, RAA, T, S, 12x log rhow]
-    # S2 input array has to be of size 11 (same order as OLCI): [ sun_zeni, view_zeni, azi_diff, T, S, 6x log rhow]
-    inputNN = np.zeros(10)
+    # S2 input array has to be of size 11 : [ sun_zeni, view_zeni, azi_diff, T, S, 6x log rhow]
+    inputNN = np.zeros(5+nBands)
     inputNN[3] = T
     inputNN[4] = S
     for i in range(rhow.shape[0]):
@@ -416,7 +418,7 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-            for j in range(rhow.shape[1]): #
+            for j in range(nBands): # CARE: the input bands of NN have to be the *first* NBands of rhow
                 inputNN[j+5] = np.log(rhow[i, j])
             log_rw_nn2 = np.array(nn_rw_rwnorm.calc(inputNN), dtype=np.float32)
             output[i, :] = np.exp(log_rw_nn2)
@@ -873,8 +875,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Set absorption band to NaN
     rho_w[:,iband_abs] = np.NaN
 
-    # TODO Normalisation
-    rho_wn = apply_NN_rhow_to_rhownorm(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]))
+    # Apply normalisation
+    print("Normalize spectra")
+    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid)
 
     # TODO uncertainties
     # unc_rhow =
