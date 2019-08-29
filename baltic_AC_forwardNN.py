@@ -358,7 +358,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
 
     return output
 
-def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_rw_rwnorm, T=15, S=35):
+def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_rw_rwnorm, nnNormFilePath, T=15, S=35):
     """
     Apply NN :  rhow to rhownorm
     input: numpy array rhow, shape = (Npixels x wavelengths),
@@ -378,6 +378,8 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
         nBands = 6
     output = np.zeros((rhow.shape[0], nBands)) + np.NaN
 
+    nn_valid_range_input = read_NN_input_ranges_fromFile(nnNormFilePath)
+
     ###
     # Launch the NN
     # Important:
@@ -391,10 +393,12 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-            for j in range(nBands): # CARE: the input bands of NN have to be the *first* NBands of rhow
-                inputNN[j+5] = np.log(rhow[i, j])
-            log_rw_nn2 = np.array(nn_rw_rwnorm.calc(inputNN), dtype=np.float32)
-            output[i, :] = np.exp(log_rw_nn2)
+
+            if check_range(np.log(rhow[i, : nBands]), nn_valid_range_input, sensor):
+                for j in range(nBands): # CARE: the input bands of NN have to be the *first* NBands of rhow
+                    inputNN[j+5] = np.log(rhow[i, j])
+                log_rw_nn2 = np.array(nn_rw_rwnorm.calc(inputNN), dtype=np.float32)
+                output[i, :] = np.exp(log_rw_nn2)
 
     return output
 
@@ -526,6 +530,25 @@ def check_and_constrain_iop(iop, inputRange):
         if iop[i] > ma:
             iop[i] = ma
     return iop
+
+
+def check_range(x, rangeValues, sensor):
+    print(len(rangeValues))
+    if sensor == 'OLCI':
+        varnames = ['log_rwmf29_ran_400', 'log_rwmf29_ran_412', 'log_rwmf29_ran_443', 'log_rwmf29_ran_489', 'log_rwmf29_ran_510',
+                    'log_rwmf29_ran_560', 'log_rwmf29_ran_620', 'log_rwmf29_ran_665', 'log_rwmf29_ran_674', 'log_rwmf29_ran_681',
+                    'log_rwmf29_ran_709', 'log_rwmf29_ran_754']
+    elif sensor == 'S2MSI':
+        varnames = ['log_rw_443', 'log_rw_490', 'log_rw_560', 'log_rw_665', 'log_rw_705', 'log_rw_740']
+
+    for i, varn in enumerate(varnames):
+        mi = rangeValues[varn][0]
+        ma = rangeValues[varn][1]
+        if x[i] < mi:
+            return False
+        if x[i] > ma:
+            return False
+    return True
 
 
 def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, sza, oza, raa, Aatm, Aatm_inv, valid, nn_iop_rw, inputRange):
@@ -756,7 +779,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Apply normalisation
     print("Normalize spectra")
-    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm)
+    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm, nnNormFilePath)
 
     # TODO uncertainties
     # unc_rhow =
