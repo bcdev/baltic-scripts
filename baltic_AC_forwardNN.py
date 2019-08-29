@@ -389,16 +389,14 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
     inputNN[3] = T
     inputNN[4] = S
     for i in range(rhow.shape[0]):
-        if valid_data[i]:
+        rhow_in = rhow[i,range(nBands)] # CARE: the input bands of NN have to be the *first* NBands of rhow
+        if valid_data[i] and np.all(rhow_in > 0):
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-
-            if check_range(np.log(rhow[i, : nBands]), nn_valid_range_input, sensor):
-                for j in range(nBands): # CARE: the input bands of NN have to be the *first* NBands of rhow
-                    inputNN[j+5] = np.log(rhow[i, j])
-                log_rw_nn2 = np.array(nn_rw_rwnorm.calc(inputNN), dtype=np.float32)
-                output[i, :] = np.exp(log_rw_nn2)
+            inputNN[5:] = np.log(rhow_in)
+            log_rw_nn2 = np.array(nn_rw_rwnorm.calc(inputNN), dtype=np.float32)
+            output[i, :] = np.exp(log_rw_nn2)
 
     return output
 
