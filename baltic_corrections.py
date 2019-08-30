@@ -21,60 +21,65 @@ def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wav
     air_mass = 1./np.cos(np.radians(sza))+1./np.cos(np.radians(vza))
 
     # Correct for ozone all bands
-    tO3 = np.exp(-adf_ppp.tau_o3_norm*ozone[valid,None]*air_mass[valid,None]) # pix*lambda product
-    rho_ng[valid] /= tO3
+    if sensor == 'OLCI':
+        tO3 = np.exp(-adf_ppp.tau_o3_norm*ozone[valid,None]*air_mass[valid,None]) # pix*lambda product
+        rho_ng[valid] /= tO3
 
     # Correct for O2 at 779 nm only
-    i779 = list(adf_ppp.bands).index(779)
-    U_O2 = pressure[valid] / adf_ppp.p_ref_t_o2
-    wav = wavelength[valid,i779]
-    LN = rho_toa[valid, i779]*np.cos(np.radians(sza[valid]))/np.pi # Ltoa/F0
-    x = [U_O2, wav, LN, sza[valid], vza[valid], 180.-raa[valid]]
-    axes = [adf_ppp.u_t_o2, adf_ppp.lambda_t_o2, adf_ppp.LN_t_o2, adf_ppp.SZA_t_o2, adf_ppp.VZA_t_o2, adf_ppp.RAA_t_o2]
-    tO2 = nlinear(x, adf_ppp.t_o2_LUT, axes)
-    rho_ng[valid, i779] /= tO2
+    if sensor == 'OLCI':
+        i779 = list(adf_ppp.bands).index(779)
+        U_O2 = pressure[valid] / adf_ppp.p_ref_t_o2
+        wav = wavelength[valid,i779]
+        LN = rho_toa[valid, i779]*np.cos(np.radians(sza[valid]))/np.pi # Ltoa/F0
+        x = [U_O2, wav, LN, sza[valid], vza[valid], 180.-raa[valid]]
+        axes = [adf_ppp.u_t_o2, adf_ppp.lambda_t_o2, adf_ppp.LN_t_o2, adf_ppp.SZA_t_o2, adf_ppp.VZA_t_o2, adf_ppp.RAA_t_o2]
+        tO2 = nlinear(x, adf_ppp.t_o2_LUT, axes)
+        rho_ng[valid, i779] /= tO2
 
     # Correct for H2O all bands but 709 nm. Note: according to S3 MPC this doesn't work ...
-    UM = tcwv[valid]*air_mass[valid]
-    for i, b in enumerate(adf_ppp.bands):
-        if b == 709: continue
-        tH2O = 0.
-        for iw in range(adf_ppp.h2o_abs_bins[b]):
-            tH2O += adf_ppp.h2o_relative_weights[b][iw]*np.exp(-adf_ppp.tau_h2o_norm[b][iw]*UM)
-        if adf_ppp.h2o_abs_bins[b] > 0: rho_ng[valid, i] /= tH2O
+    if sensor == 'OLCI':
+        UM = tcwv[valid]*air_mass[valid]
+        for i, b in enumerate(adf_ppp.bands):
+            if b == 709: continue
+            tH2O = 0.
+            for iw in range(adf_ppp.h2o_abs_bins[b]):
+                tH2O += adf_ppp.h2o_relative_weights[b][iw]*np.exp(-adf_ppp.tau_h2o_norm[b][iw]*UM)
+            if adf_ppp.h2o_abs_bins[b] > 0: rho_ng[valid, i] /= tH2O
 
     # Correct for H2O at 709 nm
-    i = list(adf_ppp.bands).index(709)
-    wav = wavelength[valid,i]
-    nlambda_h2o_709 = len(adf_ppp.lambda_h2o_709)
-    i1 = np.zeros(wav.shape,dtype='uint')
-    i2 = np.zeros(wav.shape,dtype='uint') + nlambda_h2o_709 -1
-    for l in range(nlambda_h2o_709):
-        i1[wav >= adf_ppp.lambda_h2o_709[l]] = l
-    for l in range(nlambda_h2o_709-1,-1,-1):
-        i2[wav <= adf_ppp.lambda_h2o_709[l]] = l
-    p709 = np.zeros(wav.shape,dtype='float32')
-    idiff = i1 != i2
-    if np.any(idiff):
-        p709[idiff] = (wav[idiff] - adf_ppp.lambda_h2o_709[i1][idiff]) \
-        / (adf_ppp.lambda_h2o_709[i2][idiff] - adf_ppp.lambda_h2o_709[i1][idiff])
-    tH2O_1 = 0.
-    tH2O_2 = 0.
-    for iw in range(adf_ppp.h2o_max_bins_709):
-        tH2O_1 += adf_ppp.h2o_709_relative_weights[i1,iw]*np.exp(-adf_ppp.tau_h2o_709_norm[i1,iw]*UM)
-        tH2O_2 += adf_ppp.h2o_709_relative_weights[i2,iw]*np.exp(-adf_ppp.tau_h2o_709_norm[i2,iw]*UM)
-    tH2O = (1. - p709) * tH2O_1 + p709 * tH2O_2
-    rho_ng[valid, i] /= tH2O
+    if sensor == 'OLCI':
+        i = list(adf_ppp.bands).index(709)
+        wav = wavelength[valid,i]
+        nlambda_h2o_709 = len(adf_ppp.lambda_h2o_709)
+        i1 = np.zeros(wav.shape,dtype='uint')
+        i2 = np.zeros(wav.shape,dtype='uint') + nlambda_h2o_709 -1
+        for l in range(nlambda_h2o_709):
+            i1[wav >= adf_ppp.lambda_h2o_709[l]] = l
+        for l in range(nlambda_h2o_709-1,-1,-1):
+            i2[wav <= adf_ppp.lambda_h2o_709[l]] = l
+        p709 = np.zeros(wav.shape,dtype='float32')
+        idiff = i1 != i2
+        if np.any(idiff):
+            p709[idiff] = (wav[idiff] - adf_ppp.lambda_h2o_709[i1][idiff]) \
+            / (adf_ppp.lambda_h2o_709[i2][idiff] - adf_ppp.lambda_h2o_709[i1][idiff])
+        tH2O_1 = 0.
+        tH2O_2 = 0.
+        for iw in range(adf_ppp.h2o_max_bins_709):
+            tH2O_1 += adf_ppp.h2o_709_relative_weights[i1,iw]*np.exp(-adf_ppp.tau_h2o_709_norm[i1,iw]*UM)
+            tH2O_2 += adf_ppp.h2o_709_relative_weights[i2,iw]*np.exp(-adf_ppp.tau_h2o_709_norm[i2,iw]*UM)
+        tH2O = (1. - p709) * tH2O_1 + p709 * tH2O_2
+        rho_ng[valid, i] /= tH2O
 
     # Correct for NO2 at all bands
-    yday = yday[valid]
-    lat = latitude[valid]
-    lon = longitude[valid]
-    x = [yday, lat, lon]
-    axes = [adf_clp.months_no2_clim, adf_clp.lat_no2_clim, adf_clp.lon_no2_clim]
-    U_NO2 = nlinear(x, adf_clp.no2_clim_LUT, axes)
-    tNO2 = np.exp(-adf_ppp.tau_no2_norm*U_NO2[:,None]*air_mass[valid,None])
-    rho_ng[valid] /= tNO2
+    if sensor == 'OLCI':
+        yday = yday[valid]
+        lat = latitude[valid]
+        lon = longitude[valid]
+        x = [yday, lat, lon]
+        axes = [adf_clp.months_no2_clim, adf_clp.lat_no2_clim, adf_clp.lon_no2_clim]
+        U_NO2 = nlinear(x, adf_clp.no2_clim_LUT, axes)
+        tNO2 = np.exp(-adf_ppp.tau_no2_norm*U_NO2[:,None]*air_mass[valid,None])
+        rho_ng[valid] /= tNO2
 
     return rho_ng
 
