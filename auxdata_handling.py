@@ -20,6 +20,11 @@ Calendar = jpy.get_type('java.util.Calendar')
 AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
 File = jpy.get_type('java.io.File')
 
+def recursive_glob(rootdir='.', suffixes=''):
+    return [os.path.join(looproot, filename)
+            for looproot, _, filenames in os.walk(rootdir)
+            for filename in filenames if True in [filename.endswith(suffix) for suffix in suffixes]]
+
 def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
     ##
     # This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
@@ -158,7 +163,6 @@ def setAuxData(product, AuxFullFilePath_dict, singlePosition=False, Lat=None, Lo
         'wind_v': 0.
     }
 
-    print(AuxFullFilePath_dict['ozone'][0])
     OzoneStartFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][0]) > 1000
     OzoneEndFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][1]) > 1000
     if OzoneStartFileValid:
@@ -179,10 +183,10 @@ def setAuxData(product, AuxFullFilePath_dict, singlePosition=False, Lat=None, Lo
     b = None
     if OzoneStartFileValid:
         a = ozoneStart[coordYmin:coordYmax, coordXmin:coordXmax]
-        print(a)
+        #print(a)
     if OzoneEndFileValid:
         b = ozoneEnd[coordYmin:coordYmax, coordXmin:coordXmax]
-        print(b)
+        #print(b)
     ##
     # averaging the ozone values spatially and temporally...
     if OzoneStartFileValid and OzoneEndFileValid:
@@ -277,10 +281,10 @@ def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
 
     file_ext_list = file_ext_list_Dict[type]
 
-    dest_path = rep_path + str(year)
+    dest_path = os.path.join(rep_path, str(year))
     if not os.path.exists(dest_path):
         os.mkdir(dest_path)
-    dest_path = rep_path + str(year) + '\\%03d' % int(doy) + '\\'
+    dest_path = os.path.join(rep_path,str(year),'%03d'%int(doy))
     if not os.path.exists(dest_path):
         os.mkdir(dest_path)
 
@@ -288,43 +292,47 @@ def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
         outname = "N%4d%03d" % (year, doy) + file_ext
         thisurl = url + "/N%4d%03d" % (year, doy) + file_ext
 
-        if not os.path.exists(dest_path + outname):
+        if not os.path.exists(os.path.join(dest_path,outname)):
             try:
+                print("Aux datafile missing, downloading %s"%thisurl)
                 r = requests.get(thisurl, allow_redirects=True)
                 # open method to open a file on your system and write the contents
-                with open(dest_path + outname, "wb") as code:
+                with open(os.path.join(dest_path,outname), "wb") as code:
                     code.write(r.content)
                 code.close()
             except:
+                print("Error in download, break")
                 break
         else:
-            if 'O3' in file_ext:
-                print(os.path.getsize(dest_path + outname))
-            if os.path.getsize(dest_path + outname) < 1000:
+            #if 'O3' in file_ext:
+            #    print(os.path.getsize(os.path.join(dest_path,outname)))
+            if os.path.getsize(os.path.join(dest_path,outname)) < 1000:
                 try:
+                    print("Aux datafile too small, downloading %s"%thisurl)
                     r = requests.get(thisurl, allow_redirects=True)
                     # open method to open a file on your system and write the contents
-                    with open(dest_path + outname, "wb") as code:
+                    with open(os.path.join(dest_path,outname), "wb") as code:
                         code.write(r.content)
                     code.close()
                 except:
+                    print("Error in download, break")
                     break
 
 
-def checkAuxDataAvailablity(pathAuxDataRep, product= None, startTime=None, fmt = '%Y%m%d'):
-    if product != None:
+def checkAuxDataAvailablity(pathAuxDataRep, product=None, startTime=None, fmt='%Y%m%d'):
+    if product is not None:
         startTime = product.getStartTime()
         dateMJD = startTime.getMJD()
     else:
         if startTime is None:
             print("provide a product or the starting time of the product.")
+            sys.exit(1)
         else:
             dt = datetime.datetime.strptime(startTime, fmt)
             #tt = dt.timetuple()
-            d0 = date(2000, 1, 1)
+            d0 = date(2000, 1, 1) #FIXME use the year given in startTime
             delta = dt.date() - d0
             print(delta.days)
-
             dateMJD = delta.days
 
     ###
@@ -332,20 +340,18 @@ def checkAuxDataAvailablity(pathAuxDataRep, product= None, startTime=None, fmt =
     startTime, endTime = StartAndEndFileTimeMJD24H(dateMJD)
     startFilePrefix, endFilePrefix = InterpolationBorderComputer24H(dateMJD)
 
-    print(startTime, endTime)
-
     if os.path.exists(pathAuxDataRep):
         year, doy, h = yearAndDoyAndHourUTC(startTime)
-        startFilePath = pathAuxDataRep + str(year) + '\\'+ "%03d" % doy + '\\'
+        startFilePath = os.path.join(pathAuxDataRep, str(year), "%03d"%doy)
         check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='ozone')
-        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
-        fullStartFilePathOzone = [fn for fn in files if startFilePath + startFilePrefix in fn and 'O3' in fn]
+        files = recursive_glob(startFilePath,['.hdf','.hdf.bz2'])
+        fullStartFilePathOzone = [fn for fn in files if os.path.join(startFilePath,startFilePrefix) in fn and 'O3' in fn]
 
         year, doy, h = yearAndDoyAndHourUTC(endTime)
-        startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
+        startFilePath = os.path.join(pathAuxDataRep, str(year), "%03d"%doy)
         check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='ozone')
-        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
-        fullEndFilePathOzone = [fn for fn in files if startFilePath + endFilePrefix in fn and 'O3' in fn]
+        files = recursive_glob(startFilePath,['.hdf','.hdf.bz2'])
+        fullEndFilePathOzone = [fn for fn in files if os.path.join(startFilePath,endFilePrefix) in fn and 'O3' in fn]
 
     ###
     # for meteorology:
@@ -355,16 +361,16 @@ def checkAuxDataAvailablity(pathAuxDataRep, product= None, startTime=None, fmt =
     if os.path.exists(pathAuxDataRep):
 
         year, doy, h = yearAndDoyAndHourUTC(startTime)
-        startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
+        startFilePath = os.path.join(pathAuxDataRep, str(year), "%03d"%doy)
         check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='met')
-        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
-        fullStartFilePathMET = [fn for fn in files if startFilePath + startFilePrefix in fn and not '.bz2' in fn]
+        files = recursive_glob(startFilePath,['.hdf','.hdf.bz2'])
+        fullStartFilePathMET = [fn for fn in files if os.path.join(startFilePath,startFilePrefix) in fn and not '.bz2' in fn]
 
         year, doy, h = yearAndDoyAndHourUTC(endTime)
-        startFilePath = pathAuxDataRep + str(year) + '\\' + "%03d" % doy + '\\'
+        startFilePath = os.path.join(pathAuxDataRep, str(year), "%03d"%doy)
         check_downloadAuxDataFromArchive(year, doy, pathAuxDataRep, type='met')
-        files = glob.glob(startFilePath + '/*.hdf*', recursive=True)
-        fullEndFilePathMET = [fn for fn in files if startFilePath + endFilePrefix in fn and not '.bz2' in fn]
+        files = recursive_glob(startFilePath,['.hdf','.hdf.bz2'])
+        fullEndFilePathMET = [fn for fn in files if os.path.join(startFilePath,endFilePrefix) in fn and not '.bz2' in fn]
 
     out_dict = {
         'ozone': [fullStartFilePathOzone[0], fullEndFilePathOzone[0]],

@@ -195,7 +195,7 @@ def angle_Reader(product, sensor):
         oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False)
         saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False)
         sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
-    elif sensor == 'S2MSI': #TODO, after S2_resampling.
+    elif sensor == 'S2MSI':
         oaa = get_band_or_tiePointGrid(product, 'view_azimuth_mean', reshape=False)
         oza = get_band_or_tiePointGrid(product, 'view_zenith_mean', reshape=False)
         saa = get_band_or_tiePointGrid(product, 'sun_azimuth', reshape=False)
@@ -285,7 +285,7 @@ def check_valid_pixel_expression_L1(product, sensor):
 #     print("model load, transform, predict: %s seconds " % round(time.time() - start_time, 2))
 #     return prediction
 
-def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_iop_rw, T=15, S=35, nn=''):
+def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_iop_rw, T=15, S=35):
     """
     Apply the forwardNN: IOP to rhow
     input: numpy array iop, shape = (Npixels x iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
@@ -297,14 +297,15 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     T, S: currently constant #TODO take ECMWF temperature at sea surface?
     valid ranges can be found at the beginning of the .net-file.
 
-    NN output (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN output for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN output for S2MSI (6 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740
     """
 
     # Initialise output
     nBands = None
     if sensor == 'OLCI':
         nBands = 12
-    elif sensor == 'S2':
+    elif sensor == 'S2MSI':
         nBands = 6
     output = np.zeros((iop.shape[0], nBands)) + np.NaN
 
@@ -367,7 +368,8 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
             np.array raa, shape = (Npixels,); range: 0-180
     returns: np.array rhownorm, shape = (Npixels, wavelengths)
 
-    NN output (12 bands OLCI): log_rw_norm at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN input and output for OLCI (12 bands): log_rw_norm at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN input and output for S2MSI (6 bands): log_rw_norm at lambda = 443, 490, 560, 665, 705, 740
     """
 
     # Initialise output
@@ -503,7 +505,7 @@ def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
     iband = np.searchsorted(bands_sat, bands)
 
     # Compute T0
-    taum = adf_ppp.tau_ray #TODO use per-pixel wavelength
+    taum = 0.00877*((wavelength/1000.)**(-4.05))
     air_mass = 1./np.cos(np.radians(sza))+1./np.cos(np.radians(oza))
     rho_g0 = 0.02
     factor = (1-0.5*np.exp(-rho_g/rho_g0))*air_mass
@@ -519,8 +521,12 @@ def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
     return Aatm, Aatm_inv
 
-def check_and_constrain_iop(iop, inputRange):
-    for i, varn in enumerate(['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']):
+def check_and_constrain_iop(iop, inputRange,sensor):
+    if sensor == 'OLCI':
+        iops = ['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']
+    elif sensor == 'S2MSI':
+        iops = ['log_conc_apig', 'log_conc_adet', 'log_conc_agelb', 'log_conc_bpart', 'log_conc_bwit']
+    for i, varn in enumerate(iops):
         mi = inputRange[varn][0]
         ma = inputRange[varn][1]
         if iop[i] < mi:
@@ -558,7 +564,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
     rho_wmod = np.zeros(nbands) + np.NaN
 
     # Check iop range and apply constraints to forwardNN input range
-    iop = check_and_constrain_iop(iop, inputRange)
+    iop = check_and_constrain_iop(iop, inputRange, sensor)
 
     rho_wmod[iband_NN] = apply_forwardNN_IOP_to_rhow(np.array([iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]),nn_iop_rw)
     # Compute rho_ag and fit best atmospheric model
@@ -612,8 +618,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Initialising a product for Reading with snappy
     product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
 
+    # Resampling S2MSI to 60m
     if sensor == "S2MSI" and product.isMultiSize():
-        # Resampling to 60m
+        print "Resample MSI data"
         parameters = HashMap()
         parameters.put('resolution', '60')
         parameters.put('upsampling', 'Bicubic')
@@ -622,6 +629,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         product = GPF.createProduct('S2Resampling', parameters, product)
 
 
+    # Get scene size
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
     npix = width*height
@@ -653,7 +661,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
     elif sensor == 'S2MSI':
         # Duplicate wavelengths for all pixels
-        wavelength = np.tile(bands_sat,(len(sza),1)) #TODO: check S2 bands_sat correspond to exact wavelength
+        wavelength = np.tile(bands_sat,(len(sza),1)) #TODO: integrate band with S2 SRF
         # Read latitude, longitude
         latitude, longitude = getGeoPositionsForS2Product(product)
 
@@ -661,6 +669,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     yday = get_yday(product, reshape=False)
 
     # Read meteo data
+    print "Read meteo data"
     if sensor == 'OLCI':
         pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
         ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
@@ -682,16 +691,20 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             windm = np.sqrt(wind_v * wind_v + wind_u * wind_u)
         else:
             if atmosphericAuxDataPath != None:
-                AuxFullFilePath_dict = checkAuxDataAvailablity(atmosphericAuxDataPath, product)
+                # Compute aux data (one unique value per scene)
+                AuxFullFilePath_dict = checkAuxDataAvailablity(atmosphericAuxDataPath, product=product)
                 AuxDataDict = setAuxData(product, AuxFullFilePath_dict)
-                pressure = AuxDataDict['pressure']
-                ozone = AuxDataDict['ozone']
-                tcwv = AuxDataDict['tcwv']
-                wind_u = AuxDataDict['wind_u']
-                wind_v = AuxDataDict['wind_v']
+                # Apply values to the whole image
+                shape = sza.shape
+                pressure = np.ones(shape)*AuxDataDict['pressure']
+                ozone = np.ones(shape)*AuxDataDict['ozone']
+                tcwv = np.ones(shape)*AuxDataDict['tcwv']
+                wind_u = np.ones(shape)*AuxDataDict['wind_u']
+                wind_v = np.ones(shape)*AuxDataDict['wind_v']
                 windm = np.sqrt(wind_v*wind_v + wind_u*wind_u)
             else:
                 print('Please set a path to the AUX data archive.')
+                sys.exit(1)
 
     # Read LUTs
     if sensor == 'OLCI':
