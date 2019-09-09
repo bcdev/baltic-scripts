@@ -52,7 +52,7 @@ import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # Set locale for proper time reading with datetime
-locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+#locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 def read_NN_input_ranges_fromFile(nnFilePath):
     """ Read input range for the forward NN """
@@ -217,27 +217,65 @@ def calculate_diff_azim(oaa, saa):
 
     return raa, nn_raa
 
+def run_IdePix_and_check_valid_pixel_expression(product, sensor):
+    ### todo:  check, if L1 flags are given as band 'quality_flags'
+    # (in CalValus extracts this single band representation of the flags might be missing.)
+    # calculate single band 'quality_flags' if necessary.
+    # invoke IdePix.
+    # define valid pixel expression.
+    idepixParameters = HashMap()
+    idepixParameters.put("computeCloudBuffer", 'true')
+    idepixParameters.put("cloudBufferWidth", '2')
+
+    idepix_product = None
+
+    if sensor == 'OLCI':
+        idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product)
+
+    return idepix_product
+
 
 def check_valid_pixel_expression_L1(product, sensor):
     if sensor == 'OLCI':
         height = product.getSceneRasterHeight()
         width = product.getSceneRasterWidth()
         quality_flags = np.zeros(width * height, dtype='uint32')
-        product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
 
-        # Masks OLCI L1
-        ## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
-        ## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
-        invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
-        land_mask = np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31
-        coastline_mask = np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30
-        inland_mask = np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29
-        land_mask = coastline_mask | (land_mask & ~inland_mask)
+        # match-up extractions from Calvalus do not have a 'quality_flags' band
+        if product.getBand('quality_flags') is None:
+            invalid_mask = np.zeros(width * height, dtype='uint32')
+            product.getBand('quality_flags.invalid').readPixels(0, 0, width, height, invalid_mask)
+            land_mask = np.zeros(width * height, dtype='uint32')
+            product.getBand('quality_flags.land').readPixels(0, 0, width, height, land_mask)
+            coastline_mask =  np.zeros(width * height, dtype='uint32')
+            product.getBand('quality_flags.coastline').readPixels(0, 0, width, height, coastline_mask)
+            inland_mask =  np.zeros(width * height, dtype='uint32')
+            product.getBand('quality_flags.fresh_inland_water').readPixels(0, 0, width, height, inland_mask)
 
-        bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
+            land_mask = coastline_mask | (land_mask & ~inland_mask)
 
-        invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
-        valid_pixel_flag = np.logical_not(invalid_mask)
+            bright_mask = np.zeros(width * height, dtype='uint32')
+            product.getBand('quality_flags.bright').readPixels(0, 0, width, height, bright_mask)
+
+            invalid_mask = np.logical_or(invalid_mask, np.logical_or(land_mask, bright_mask))
+            valid_pixel_flag = np.logical_not(invalid_mask)
+        else:
+            product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
+
+            # Masks OLCI L1
+            ## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
+            ## 24=cosmetic 23=duplicated 22=sun-glint_risk 21=dubious 20->00=saturated@Oa01->saturated@Oa21
+            ## todo: could also include simple bright NIR test: rho_toa(865nm) < 0.2
+            invalid_mask = np.bitwise_and(quality_flags, 2 ** 25) == 2 ** 25
+            land_mask = np.bitwise_and(quality_flags, 2 ** 31) == 2 ** 31
+            coastline_mask = np.bitwise_and(quality_flags, 2 ** 30) == 2 ** 30
+            inland_mask = np.bitwise_and(quality_flags, 2 ** 29) == 2 ** 29
+            land_mask = coastline_mask | (land_mask & ~inland_mask)
+
+            bright_mask = np.bitwise_and(quality_flags, 2 ** 27) == 2 ** 27
+
+            invalid_mask = np.logical_or(invalid_mask , np.logical_or( land_mask , bright_mask))
+            valid_pixel_flag = np.logical_not(invalid_mask)
 
     elif sensor == 'S2MSI':
         #TODO: set valid pixel expression L1C S2
@@ -411,19 +449,21 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
 
     return output
 
-def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None, copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP"):
+def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
+                             copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
+                             add_Idepix_Flags=False, idepixProduct=None):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
     bandShape = (height, width)
 
+    dirname = os.path.dirname(baltic__product_path)
+    outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
     if outputProductFormat == "BEAM-DIMAP":
-        dirname = os.path.dirname(baltic__product_path)
-        outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
-        baltic__product_path = os.path.join(dirname,outname+'.dim')
+        baltic__product_path = os.path.join(dirname, outname + addname +'.dim')
     elif outputProductFormat == 'CSV':
-        baltic__product_path = baltic__product_path
+        baltic__product_path = os.path.join(dirname, outname + addname +'.csv')
 
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
     balticPACProduct.setFileLocation(File(baltic__product_path))
@@ -484,6 +524,28 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             data = get_band_or_tiePointGrid(product,ob)
             sourceData = np.array(data, dtype='float64').reshape(bandShape)
             singleBand.setRasterData(ProductData.createInstance(sourceData))
+
+    if add_Idepix_Flags:
+        flagBand = balticPACProduct.addBand('pixel_classif_flags', ProductData.TYPE_INT32)
+        flagBand.setDescription('Idepix flag information')
+        flagBand.setNoDataValue(np.nan)
+        flagBand.setNoDataValueUsed(True)
+
+        data = get_band_or_tiePointGrid(idepixProduct, 'pixel_classif_flags')
+        sourceData = np.array(data, dtype='int32').reshape(bandShape)
+        flagBand.setRasterData(ProductData.createInstance(sourceData))
+
+        idepixFlagCoding = FlagCoding('pixel_classif_flags')
+        flagNames = list(idepixProduct.getAllFlagNames())
+        print(list(flagNames))
+        IDflags = 'pixel_classif_flags'
+        flagNames = [fn[(len(IDflags)+1):] for fn in flagNames if IDflags in fn]
+        for i, fn in enumerate(flagNames):
+            idepixFlagCoding.addFlag(fn, 2**i, fn)
+        balticPACProduct.getFlagCodingGroup().add(idepixFlagCoding)
+        flagBand.setSampleCoding(idepixFlagCoding)
+
+
 
 
     if outputProductFormat == 'BEAM-DIMAP':
@@ -599,7 +661,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Define forward NN and normalisation NN
     if sensor == 'OLCI':
         nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net" 
+        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        # nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+        # nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
     elif sensor == 'S2MSI':
         nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" 
         nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
@@ -630,7 +694,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Resampling S2MSI to 60m
     if sensor == "S2MSI" and product.isMultiSize():
-        print "Resample MSI data"
+        print( "Resample MSI data")
         parameters = HashMap()
         parameters.put('resolution', '60')
         parameters.put('upsampling', 'Bicubic')
@@ -649,6 +713,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Classify pixels with Level-1 flags
     valid = check_valid_pixel_expression_L1(product, sensor)
+    print(np.sum(valid), len(valid))
+
+    idepixProduct = run_IdePix_and_check_valid_pixel_expression(product, sensor)
+
 
     # Limit processing to sub-box
     if subset: #FIXME should be only applied to input raster file
@@ -679,7 +747,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     yday = get_yday(product, reshape=False)
 
     # Read meteo data
-    print "Read meteo data"
+    print( "Read meteo data")
     if sensor == 'OLCI':
         pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
         ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
@@ -736,71 +804,71 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Vicarious calibration
     #rho_ng = vicarious_calibration(rho_ng, valid, adf_acp, sensor)
 
-    # Compute diffuse transmittance (Rayleigh)
-    td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
-
-    # Glint correction - rho_g required even for HYGEOS correction
-    rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
-
-    if correction == 'IPF':
-        # White-caps correction
-        #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
-
-        # Rayleigh correction
-        rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
-
-    elif correction == 'HYGEOS':
-        # Glint + Rayleigh correction
-        rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-                                                                     pressure, windm, LUT_HYGEOS, altitude)
-
-    # Atmospheric model
-    print("Compute atmospheric matrices")
-    Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
-
-    # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    print("Inversion")
-    niop = 5
-    iop = np.zeros((npix,niop)) + np.NaN
-    percent_old = 0
-    ipix_proc = 0
-    npix_proc = np.count_nonzero(valid)
-    for ipix in range(npix):
-        if not valid[ipix]: continue
-        # Display processing progress with respect to the valid pixels
-        percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
-        if percent != percent_old:
-            percent_old = percent
-            sys.stdout.write(" ...%d%%"%percent)
-            sys.stdout.flush()
-        # First guess
-        #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        iop_0 = np.array([-3., -3., -3., -3., -3.])
-        # Nelder-Mead optimization
-        args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix], nn_iop_rw, inputRange)
-        NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
-        iop[ipix,:] = NM_res.x
-        #success = NM_res.success TODO add a flag in the Level-2 output to get this info
-        ipix_proc += 1
-    print("")
-
-    # Compute the final residual
-    print("Compute final residual")
-    rho_wmod = np.zeros((npix, nbands)) + np.NaN
-    #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
-    rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid, nn_iop_rw)
-    rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
-    rho_ag = rho_rc - td*rho_wmod
-    coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
-    rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
-    rho_w = (rho_rc - rho_ag_mod)/td
-
-    # Set absorption band to NaN
-    rho_w[:,iband_abs] = np.NaN
-
-    # Apply normalisation
-    print("Normalize spectra")
-    rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm, inputRange_norm)
+    # # Compute diffuse transmittance (Rayleigh)
+    # td = diffuse_transmittance(sza, oza, pressure, adf_ppp)
+    #
+    # # Glint correction - rho_g required even for HYGEOS correction
+    # rho_g, rho_gc = glint_correction(rho_ng, valid, sza, oza, saa, raa, pressure, wind_u, wind_v, windm, adf_ppp)
+    #
+    # if correction == 'IPF':
+    #     # White-caps correction
+    #     #rho_wc, rho_gc = white_caps_correction(rho_ng, valid, windm, td, adf_ppp)
+    #
+    #     # Rayleigh correction
+    #     rho_r, rho_rc = Rayleigh_correction(rho_gc, valid, sza, oza, raa, pressure, windm, adf_acp, adf_ppp, sensor)
+    #
+    # elif correction == 'HYGEOS':
+    #     # Glint + Rayleigh correction
+    #     rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+    #                                                                  pressure, windm, LUT_HYGEOS, altitude)
+    #
+    # # Atmospheric model
+    # print("Compute atmospheric matrices")
+    # Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
+    #
+    # # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
+    # print("Inversion")
+    # niop = 5
+    # iop = np.zeros((npix,niop)) + np.NaN
+    # percent_old = 0
+    # ipix_proc = 0
+    # npix_proc = np.count_nonzero(valid)
+    # for ipix in range(npix):
+    #     if not valid[ipix]: continue
+    #     # Display processing progress with respect to the valid pixels
+    #     percent = (int(float(ipix_proc)/float(npix_proc)*100)/10)*10
+    #     if percent != percent_old:
+    #         percent_old = percent
+    #         sys.stdout.write(" ...%d%%"%percent)
+    #         sys.stdout.flush()
+    #     # First guess
+    #     #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
+    #     iop_0 = np.array([-3., -3., -3., -3., -3.])
+    #     # Nelder-Mead optimization
+    #     args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix], nn_iop_rw, inputRange)
+    #     NM_res = minimize(ac_cost,iop_0,args=args_pix,method='nelder-mead')#, options={'maxiter':150', disp': True})
+    #     iop[ipix,:] = NM_res.x
+    #     #success = NM_res.success TODO add a flag in the Level-2 output to get this info
+    #     ipix_proc += 1
+    # print("")
+    #
+    # # Compute the final residual
+    # print("Compute final residual")
+    # rho_wmod = np.zeros((npix, nbands)) + np.NaN
+    # #rho_wmod[:,iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, raa, sensor,valid)
+    # rho_wmod[:, iband_NN] = apply_forwardNN_IOP_to_rhow(iop, sza, oza, nn_raa, sensor, valid, nn_iop_rw)
+    # rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
+    # rho_ag = rho_rc - td*rho_wmod
+    # coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
+    # rho_ag_mod[valid] = np.einsum('...ij,...j->...i',Aatm[valid],coefs)
+    # rho_w = (rho_rc - rho_ag_mod)/td
+    #
+    # # Set absorption band to NaN
+    # rho_w[:,iband_abs] = np.NaN
+    #
+    # # Apply normalisation
+    # print("Normalize spectra")
+    # rho_wn = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm, inputRange_norm)
 
     # TODO uncertainties
     # unc_rhow =
@@ -810,7 +878,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # input: spectral_dict holds the spectral fields
     #        scalar_dict holds the scalar fields
     ###
-    baltic__product_path = os.path.join(outpath,'baltic_' + filename + addName)
+    baltic__product_path = os.path.join(outpath,'baltic_' + filename)
     if outputSpectral:
         spectral_dict = {}
         for field in outputSpectral.keys():
@@ -823,7 +891,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             scalar_dict[field] = {'data': eval(outputScalar[field])}
     else: scalar_dict = None
 
-    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict, copyOriginalProduct, outputProductFormat)
+    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
+                             copyOriginalProduct, outputProductFormat, addName, True, idepixProduct)
 
     product.closeProductReader()
 
