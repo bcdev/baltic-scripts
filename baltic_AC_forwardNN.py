@@ -495,7 +495,8 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
 
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
                              copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
-                             add_Idepix_Flags=False, idepixProduct=None, add_L2Flags=False, L2FlagArray=None):
+                             add_Idepix_Flags=False, idepixProduct=None, add_L2Flags=False, L2FlagArray=None,
+                             add_Geometry=False):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
     width = product.getSceneRasterWidth()
@@ -612,6 +613,22 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
         balticPACProduct.getFlagCodingGroup().add(L2FlagCoding)
         flagBand.setSampleCoding(L2FlagCoding)
 
+    if add_Geometry:
+        oaa, oza, saa, sza = angle_Reader(product, sensor)
+        if sensor == 'OLCI':
+            geomNames = ['OAA', 'OZA', 'SAA', 'SZA']
+        elif sensor == 'S2MSI':
+            geomNames = ['view_azimuth_mean', 'view_zenith_mean', 'sun_azimuth', 'sun_zenith']
+
+        dataList = [oaa, oza, saa, sza]
+
+        for gn, data in zip(geomNames, dataList):
+            singleBand = balticPACProduct.addBand(gn, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+
+            sourceData = np.array(data, dtype='float64').reshape(bandShape)
+            singleBand.setRasterData(ProductData.createInstance(sourceData))
 
 
 
@@ -727,10 +744,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Define forward NN and normalisation NN
     if sensor == 'OLCI':
-        nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
-        # nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
-        # nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
+        # nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+        # nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
     elif sensor == 'S2MSI':
         nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" 
         nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
@@ -785,7 +802,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     idepixProduct = run_IdePix_processor(product, sensor)
     validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor)
 
-    valid = np.logical_or(valid, validIdepix)
+    valid = np.logical_and(valid, validIdepix)
 
     # Limit processing to sub-box
     if subset: #FIXME should be only applied to input raster file
@@ -970,7 +987,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=True, idepixProduct=idepixProduct,
-                             add_L2Flags=True, L2FlagArray=l2flags)
+                             add_L2Flags=True, L2FlagArray=l2flags,
+                             add_Geometry=True)
 
     product.closeProductReader()
 
