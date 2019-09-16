@@ -392,7 +392,7 @@ def apply_forwardNN_IOP_to_rhow(iop, sun_zenith, view_zenith, diff_azimuth, sens
     # OLCI input array has to be of size 10: [SZA, VZA, RAA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
     # S2 input array has to be of size 10 (same order as OLCI): [ sun_zeni, view_zeni, azi_diff, T, S, log_conc_apig, log_conc_adet,
     # log_conc_agelb, log_conc_bpart, log_conc_bwit]
-    inputNN = np.zeros(10)
+    inputNN = np.zeros(10) -1. # care zero used by default for de-activated IOPs when niop<5
     inputNN[3] = T
     inputNN[4] = S
     for i in range(iop.shape[0]):
@@ -681,7 +681,9 @@ def check_and_constrain_iop(iop, inputRange,sensor):
         iops = ['log_apig', 'log_adet', 'log_agelb', 'log_bpart', 'log_bwit']
     elif sensor == 'S2MSI':
         iops = ['log_conc_apig', 'log_conc_adet', 'log_conc_agelb', 'log_conc_bpart', 'log_conc_bwit']
-    for i, varn in enumerate(iops):
+    #for i, varn in enumerate(iops):
+    for i in range(len(iop)):
+        varn = iops[i]
         mi = inputRange[varn][0]
         ma = inputRange[varn][1]
         if iop[i] < mi:
@@ -727,16 +729,16 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
     coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
     rho_ag_mod = np.einsum('...ij,...j->...i',Aatm,coefs)
     # Compute rho_w
-    rho_w = (rho_rc - rho_ag_mod)/td
+    trho_w = (rho_rc - rho_ag_mod)#/td
     # Compute residual and chi2
-    res  = rho_w[iband_chi2]-rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
+    res  = trho_w[iband_chi2]-td[iband_chi2]*rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
     chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
     return chi2
 
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
-                        atmosphericAuxDataPath = None):
+                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -744,10 +746,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Define forward NN and normalisation NN
     if sensor == 'OLCI':
-        # nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-        # nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
-        nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
-        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
+        nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        #nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+        #nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
     elif sensor == 'S2MSI':
         nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" 
         nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
@@ -799,10 +801,13 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     valid = check_valid_pixel_expression_L1(product, sensor)
     print(np.sum(valid), len(valid))
 
-    idepixProduct = run_IdePix_processor(product, sensor)
-    validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor)
+    if add_Idepix_Flags:
+        idepixProduct = run_IdePix_processor(product, sensor)
+        validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor)
+        valid = np.logical_and(valid, validIdepix)
+    else:
+        idepixProduct=None
 
-    valid = np.logical_and(valid, validIdepix)
 
     # Limit processing to sub-box
     if subset: #FIXME should be only applied to input raster file
@@ -914,7 +919,6 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
     print("Inversion")
-    niop = 5
     iop = np.zeros((npix,niop)) + np.NaN
     percent_old = 0
     ipix_proc = 0
@@ -932,7 +936,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             sys.stdout.flush()
         # First guess
         #iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        iop_0 = np.array([-3., -3., -3., -3., -3.])
+        iop_0 = np.zeros(niop) -3. # array([-3., -3., -3., -3., -3.])
         # Nelder-Mead optimization
         args_pix = (sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix], nn_iop_rw, inputRange)
         NM_res = minimize(ac_cost, iop_0, args=args_pix, method='nelder-mead')#, options={'maxiter':150', disp': True})
@@ -986,7 +990,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
-                             add_Idepix_Flags=True, idepixProduct=idepixProduct,
+                             add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=True, L2FlagArray=l2flags,
                              add_Geometry=True)
 
