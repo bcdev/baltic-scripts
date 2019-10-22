@@ -40,7 +40,6 @@ def Fair(lam, co2):
     return ((78.084 * _FN2 + 20.946 * _FO2 + 0.934 +
             co2*1e-4 *1.15)/(78.084+20.946+0.934+co2*1e-4))
 
-
 def n300(lam):
     """
     index of refraction of dry air (300 ppm CO2)
@@ -105,7 +104,10 @@ def rod(lam, co2=400., lat=45., z=0., P=1013.25):
     Example: rod(0.4, 400., 45., 0., 1013.25)
     """
     Avogadro = codata.value('Avogadro constant')
-    G = g(lat, z)
-    return raycrs(lam, co2) * P*1e3 * Avogadro/ma(co2)/G
+    zs = 0.73737 * z + 5517.56  # effective mass-weighted altitude
+    G = g(lat, zs)
+    # air pressure at the pixel (i.e. at altitude) in hPa
+    Psurf = (P * (1. - 0.0065 * z / 288.15) ** 5.255) * 1000.  # air pressure at pixel location in dyn / cm2, which is hPa * 1000
+    return raycrs(lam, co2) * Psurf * Avogadro/ma(co2)/G
 
 
