@@ -4,6 +4,7 @@
 import numpy as np
 from misc import nlinear
 from bodhaine import rod
+from bodhaine_SRF import rod_SRF
 
 def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wavelength, pressure, ozone, tcwv, adf_ppp, adf_clp, sensor):
     """
@@ -190,6 +191,7 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
     # Initialise Rayleigh and Rayleigh corrected reflectance
     rho_molgli = np.zeros(rho_ng.shape) + np.NaN
     rho_rc = np.copy(rho_ng)
+    tau_ray2 = np.zeros(rho_ng.shape)
     tau_ray = np.zeros(rho_ng.shape)
 
     # Compute Rayleigh optical thickness from Bodhaine
@@ -198,9 +200,11 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         altitude = 0.
 
     for i in range(tau_ray.shape[1]):
-        tau_ray[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
-        test = rod(wavelength[:,i]/1000., co2, latitude, 0., pressure)
+        tau_ray2[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
+        ## OLCI S3A only!
+        tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure)
 
+        #print(i, np.nanmedian((tau_ray2[:, i] - tau_ray[:, i]) / tau_ray[:, i] * 100.))
 
 
     # Compute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
@@ -220,7 +224,7 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i]]
         rho_r[:,i] = nlinear(x, LUT.rho_mol, axes) # Rayleigh
 
-    return rho_r, rho_molgli, rho_rc, tau_ray
+    return rho_r, rho_molgli, rho_rc, tau_ray, tau_ray2
 
 def vicarious_calibration(rho_ng, valid, adf_acp, sensor):
     """
