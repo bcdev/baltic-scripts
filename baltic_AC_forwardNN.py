@@ -84,7 +84,7 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
         var.shape = (height, width)
         for i in range(height):
             for j in range(width):
-                var[i, j] = product.getTiePointGrid(name).getPixelDouble(i, j)
+                var[i, j] = product.getTiePointGrid(name).getPixelDouble(j, i)
         var.shape = (height*width)
     else:
         raise Exception('{}: neither a band nor a tie point grid'.format(name))
@@ -738,7 +738,7 @@ def ac_cost(iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, td, s
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
-                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True):
+                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -746,10 +746,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     # Define forward NN and normalisation NN
     if sensor == 'OLCI':
-        nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
-        #nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
-        #nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
+        # nnFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+        # nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        nnFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
     elif sensor == 'S2MSI':
         nnFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net" 
         nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
@@ -910,12 +910,13 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
     elif correction == 'HYGEOS':
         # Glint + Rayleigh correction
-        rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+        rho_r, rho_molgli, rho_rc, tau_r, tau_r_mono = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
                                                                      pressure, windm, LUT_HYGEOS, altitude)
 
     # Atmospheric model
     print("Compute atmospheric matrices")
     Aatm, Aatm_inv = polymer_matrix(bands_sat,bands_corr,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
+    l2flags = np.zeros(npix, dtype='int32')
 
     # Inversion of iop = [log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
     print("Inversion")
@@ -924,7 +925,6 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     ipix_proc = 0
     npix_proc = np.count_nonzero(valid)
 
-    l2flags = np.zeros(npix, dtype='int32')
 
     for ipix in range(npix):
         if not valid[ipix]: continue
@@ -991,7 +991,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
-                             add_L2Flags=True, L2FlagArray=l2flags,
+                             add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
                              add_Geometry=True)
 
     product.closeProductReader()
