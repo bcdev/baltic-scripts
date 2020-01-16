@@ -15,8 +15,9 @@ import time
 import glob
 
 # snappy import
-sys.path.append('/home/cmazeran/.snap/snap-python')
-#sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
+# sys.path.append('/home/cmazeran/.snap/snap-python')
+# sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
+sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
@@ -53,7 +54,7 @@ import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # Set locale for proper time reading with datetime
-locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+# locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 def read_NN_input_ranges_fromFile(nnFilePath):
     """ Read input range for the forward NN """
@@ -213,7 +214,8 @@ def run_IdePix_processor(product, sensor):
     idepix_product = None
 
     if sensor == 'OLCI':
-        idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product)
+        # idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product) # SNAP 6
+        idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, product) #
     elif sensor == 'S2MSI':
         idepixParameters.put("computeCloudBufferForCloudAmbiguous", 'true')
         idepix_product = GPF.createProduct("Idepix.Sentinel2", idepixParameters, product)
@@ -414,10 +416,10 @@ def apply_backwardNN_rhow_to_IOP(rhow, sun_zenith, view_zenith, diff_azimuth, se
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-            for j,var in enumerate(inputRange_backward.keys()[5:]):
+            for j,var in enumerate(list(inputRange_backward.keys())[5:]):
                 # Threshold input rhow, in case of negative or too high value
                 j_glob = iband_NN_backward[j]
-                inputRange=inputRange_backward.keys()[j]
+                # inputRange=list(inputRange_backward.keys())[5:][j]
                 rhow_in = max(rhow[i, j_glob], np.exp(inputRange_backward[var][0]))
                 rhow_in = min(rhow_in, np.exp(inputRange_backward[var][1]))
                 if rhow_in != rhow[i, j_glob]:
@@ -465,7 +467,7 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-            for j,var in enumerate(inputRange_norm.keys()[5:]):
+            for j,var in enumerate(list(inputRange_norm.keys())[5:]):
                 # Threshold input rhow, in case of negative or too high value
                 j_glob = iband_NN_norm[j]
                 rhow_in = max(rhow[i, j_glob], np.exp(inputRange_norm[var][0]))
@@ -748,7 +750,7 @@ def f_opt(xdata_all, c0,c1,c2):
 
 def baltic_AC_backwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
-                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False):
+                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False):
     """
     Main function to run the Baltic+ AC based on backward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -1024,6 +1026,14 @@ def baltic_AC_backwardNN(scene_path='', filename='', outpath='', sensor='', subs
         for field in outputScalar.keys():
             scalar_dict[field] = {'data': eval(outputScalar[field])}
     else: scalar_dict = None
+
+    if add_c2rccIOPs:
+        iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
+        if scalar_dict is None:
+            scalar_dict = {}
+        for i, field in enumerate(iop_names):
+            scalar_dict[field] = {'data': np.exp(log_iop[:,i])}
+
 
     write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
