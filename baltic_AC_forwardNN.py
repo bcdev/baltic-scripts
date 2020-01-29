@@ -103,21 +103,28 @@ def read_NN_input_ranges_fromFile(nnFilePath):
     f.close()
     return input_range
 
-def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
+def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True, subset=None):
     ##
     # This function reads a band or tie-points, identified by its name <name>, from SNAP product <product>
     # The fuction returns a numpy array of shape (height, width)
     ##
-    height = product.getSceneRasterHeight()
-    width = product.getSceneRasterWidth()
+    if subset is None:
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+        sline, eline, scol, ecol = 0, height-1, 0, width -1
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
+
     var = np.zeros(width * height, dtype=dtype)
     if name in list(product.getBandNames()):
-        product.getBand(name).readPixels(0, 0, width, height, var)
+        product.getBand(name).readPixels(scol, sline, width, height, var)
     elif name in list(product.getTiePointGridNames()):
         var.shape = (height, width)
-        for i in range(height):
-            for j in range(width):
-                var[i, j] = product.getTiePointGrid(name).getPixelDouble(j, i)
+        for i,iglob in enumerate(range(sline,eline+1)):
+            for j,jglob in enumerate(range(scol,ecol+1)):
+                var[i, j] = product.getTiePointGrid(name).getPixelDouble(jglob, iglob)
         var.shape = (height*width)
     else:
         raise Exception('{}: neither a band nor a tie point grid'.format(name))
@@ -127,7 +134,7 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
 
     return var
 
-def Level1_Reader(product, sensor, band_group='radiance', reshape=True):
+def Level1_Reader(product, sensor, band_group='radiance', reshape=True, subset=None):
     input_label = []
     if sensor == 'S2MSI':
         input_label = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12']
@@ -140,21 +147,36 @@ def Level1_Reader(product, sensor, band_group='radiance', reshape=True):
             input_label = ["lambda0_band_%d"%(i+1) for i in range(21)]
 
     # Initialise and read all bands contained in input_label (pixel x band)
-    height = product.getSceneRasterHeight()
-    width = product.getSceneRasterWidth()
+    if subset is None:
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
     var = np.zeros((width * height, len(input_label)))
     for i, bn in enumerate(input_label):
-        var[:,i] = get_band_or_tiePointGrid(product, bn, reshape=reshape)
+        var[:,i] = get_band_or_tiePointGrid(product, bn, reshape=reshape, subset=subset)
 
     return var
 
-def get_yday(product,reshape=True):
+def get_yday(product,reshape=True, subset=None):
     # Get product size
-    height = product.getSceneRasterHeight()
-    width = product.getSceneRasterWidth()
+    height_full = product.getSceneRasterHeight()
+    width_full = product.getSceneRasterWidth()
+    if subset is None:
+        height = height_full
+        width = witdth_full
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
 
     ## time handling for match-up files
     if str(product.getFileLocation()).endswith('.txt') or str(product.getFileLocation()).endswith('.csv'):
+        if not subset is None:
+            print('Error: subset option not compatible with match-up file')
+            sys.exit(1)
         yday = np.zeros((height, width))
         for y in range(height):
             for x in range(width):
@@ -163,13 +185,16 @@ def get_yday(product,reshape=True):
 
     else:
         ## time handling for a scene
-        # Get yday of each row
+        # Get yday of each row (full scene)
         dstart = datetime.datetime.strptime(str(product.getStartTime()),'%d-%b-%Y %H:%M:%S.%f')
         dstop = datetime.datetime.strptime(str(product.getEndTime()),'%d-%b-%Y %H:%M:%S.%f')
         dstart = np.datetime64(dstart)
         dstop = np.datetime64(dstop)
-        dpix = dstart + (dstop-dstart)/float(height-1.)*np.arange(height)
+        dpix = dstart + (dstop-dstart)/float(height_full-1.)*np.arange(height_full)
         yday = [k.timetuple().tm_yday for k in dpix.astype(datetime.datetime)]
+        # Limit to subset
+        if subset:
+            yday = yday[sline:eline+1]
 
         # Apply to all columns
         yday = np.array(yday*width).reshape(width,height).transpose()
@@ -179,7 +204,7 @@ def get_yday(product,reshape=True):
 
     return yday
 
-def radianceToReflectance_Reader(product, sensor = '', print_info=False):
+def radianceToReflectance_Reader(product, sensor = '', print_info=False, subset=None):
 
     if print_info:
         height = product.getSceneRasterHeight()
@@ -196,26 +221,26 @@ def radianceToReflectance_Reader(product, sensor = '', print_info=False):
         print("Bands:       %s" % (list(band_names)))
 
     if sensor == 'OLCI':
-        rad = Level1_Reader(product, sensor, band_group='radiance',reshape=False)
-        solar_flux = Level1_Reader(product, sensor, band_group='solar_flux',reshape=False)
-        SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
+        rad = Level1_Reader(product, sensor, band_group='radiance',reshape=False, subset=subset)
+        solar_flux = Level1_Reader(product, sensor, band_group='solar_flux',reshape=False, subset=subset)
+        SZA = get_band_or_tiePointGrid(product, 'SZA', reshape=False, subset=subset)
         refl = rad * np.pi / (solar_flux * np.cos(SZA.reshape(rad.shape[0],1)*np.pi/180.))
     elif sensor == 'S2MSI':
-        refl = Level1_Reader(product, sensor,reshape=False)
+        refl = Level1_Reader(product, sensor,reshape=False, subset=subset)
 
     return refl
 
-def angle_Reader(product, sensor):
+def angle_Reader(product, sensor, subset=None):
     if sensor == 'OLCI':
-        oaa = get_band_or_tiePointGrid(product, 'OAA', reshape=False)
-        oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False)
-        saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False)
-        sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False)
+        oaa = get_band_or_tiePointGrid(product, 'OAA', reshape=False, subset=subset)
+        oza = get_band_or_tiePointGrid(product, 'OZA', reshape=False, subset=subset)
+        saa = get_band_or_tiePointGrid(product, 'SAA', reshape=False, subset=subset)
+        sza = get_band_or_tiePointGrid(product, 'SZA', reshape=False, subset=subset)
     elif sensor == 'S2MSI':
-        oaa = get_band_or_tiePointGrid(product, 'view_azimuth_mean', reshape=False)
-        oza = get_band_or_tiePointGrid(product, 'view_zenith_mean', reshape=False)
-        saa = get_band_or_tiePointGrid(product, 'sun_azimuth', reshape=False)
-        sza = get_band_or_tiePointGrid(product, 'sun_zenith', reshape=False)
+        oaa = get_band_or_tiePointGrid(product, 'view_azimuth_mean', reshape=False, subset=subset)
+        oza = get_band_or_tiePointGrid(product, 'view_zenith_mean', reshape=False, subset=subset)
+        saa = get_band_or_tiePointGrid(product, 'sun_azimuth', reshape=False, subset=subset)
+        sza = get_band_or_tiePointGrid(product, 'sun_zenith', reshape=False, subset=subset)
 
     return oaa, oza, saa, sza
 
@@ -253,14 +278,23 @@ def run_IdePix_processor(product, sensor):
 
     return idepix_product
 
-def check_valid_pixel_expression_Idepix(product, sensor):
+def check_valid_pixel_expression_Idepix(product, sensor, subset=None):
     valid_pixel_flag = None
-    if sensor == 'OLCI':
+
+    if subset is None:
         height = product.getSceneRasterHeight()
         width = product.getSceneRasterWidth()
-        quality_flags = np.zeros(width * height, dtype='uint32')
-        product.getBand('pixel_classif_flags').readPixels(0, 0, width, height, quality_flags)
+        sline = 0
+        scol = 0
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
 
+    quality_flags = np.zeros(width * height, dtype='uint32')
+    product.getBand('pixel_classif_flags').readPixels(scol, sline, width, height, quality_flags)
+
+    if sensor == 'OLCI':
         # Masks OLCI Idepix
         invalid_mask = np.bitwise_and(quality_flags, 2 ** 0) == 2 ** 0
         cloud_mask = np.bitwise_and(quality_flags, 2 ** 1) == 2 ** 1
@@ -271,11 +305,6 @@ def check_valid_pixel_expression_Idepix(product, sensor):
         valid_pixel_flag = np.logical_not(invalid_mask)
 
     if sensor == 'S2MSI':
-        height = product.getSceneRasterHeight()
-        width = product.getSceneRasterWidth()
-        quality_flags = np.zeros(width * height, dtype='uint32')
-        product.getBand('pixel_classif_flags').readPixels(0, 0, width, height, quality_flags)
-
         # Masks S2MSI Idepix
         invalid_mask = np.bitwise_and(quality_flags, 2 ** 0) == 2 ** 0
         cloud_mask = np.bitwise_and(quality_flags, 2 ** 1) == 2 ** 1
@@ -289,33 +318,42 @@ def check_valid_pixel_expression_Idepix(product, sensor):
     return valid_pixel_flag
 
 
-def check_valid_pixel_expression_L1(product, sensor):
+def check_valid_pixel_expression_L1(product, sensor, subset=None):
     valid_pixel_flag = None
-    if sensor == 'OLCI':
+
+    if subset is None:
         height = product.getSceneRasterHeight()
         width = product.getSceneRasterWidth()
+        sline = 0
+        scol = 0
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
+
+    if sensor == 'OLCI':
         quality_flags = np.zeros(width * height, dtype='uint32')
 
         # match-up extractions from Calvalus do not have a 'quality_flags' band
         if product.getBand('quality_flags') is None:
             invalid_mask = np.zeros(width * height, dtype='uint32')
-            product.getBand('quality_flags.invalid').readPixels(0, 0, width, height, invalid_mask)
+            product.getBand('quality_flags.invalid').readPixels(scol, sline, width, height, invalid_mask)
             land_mask = np.zeros(width * height, dtype='uint32')
-            product.getBand('quality_flags.land').readPixels(0, 0, width, height, land_mask)
+            product.getBand('quality_flags.land').readPixels(scol, sline, width, height, land_mask)
             coastline_mask =  np.zeros(width * height, dtype='uint32')
-            product.getBand('quality_flags.coastline').readPixels(0, 0, width, height, coastline_mask)
+            product.getBand('quality_flags.coastline').readPixels(scol, sline, width, height, coastline_mask)
             inland_mask =  np.zeros(width * height, dtype='uint32')
-            product.getBand('quality_flags.fresh_inland_water').readPixels(0, 0, width, height, inland_mask)
+            product.getBand('quality_flags.fresh_inland_water').readPixels(scol, sline, width, height, inland_mask)
 
             land_mask = coastline_mask | (land_mask & ~inland_mask)
 
             bright_mask = np.zeros(width * height, dtype='uint32')
-            product.getBand('quality_flags.bright').readPixels(0, 0, width, height, bright_mask)
+            product.getBand('quality_flags.bright').readPixels(scol, sline, width, height, bright_mask)
 
             invalid_mask = np.logical_or(invalid_mask, np.logical_or(land_mask, bright_mask))
             valid_pixel_flag = np.logical_not(invalid_mask)
         else:
-            product.getBand('quality_flags').readPixels(0, 0, width, height, quality_flags)
+            product.getBand('quality_flags').readPixels(scol, sline, width, height, quality_flags)
 
             # Masks OLCI L1
             ## flags: 31=land 30=coastline 29=fresh_inland_water 28=tidal_region 27=bright 26=straylight_risk 25=invalid
@@ -334,11 +372,9 @@ def check_valid_pixel_expression_L1(product, sensor):
 
     elif sensor == 'S2MSI':
         #TODO: set valid pixel expression L1C S2
-        height = product.getSceneRasterHeight()
-        width = product.getSceneRasterWidth()
         valid_pixel_flag = np.ones(width * height, dtype='uint32')
 
-        b8 = get_band_or_tiePointGrid(product, 'B8', reshape=False)
+        b8 = get_band_or_tiePointGrid(product, 'B8', reshape=False, subset=subset)
         valid_pixel_flag = np.logical_and(np.array(b8 > 0), np.array(b8 < 0.1))
 
     return valid_pixel_flag
@@ -513,12 +549,21 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
                              copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
                              add_Idepix_Flags=False, idepixProduct=None, add_L2Flags=False, L2FlagArray=None,
-                             add_Geometry=False):
+                             add_Geometry=False, subset=None):
     # Initialise the output product
     File = jpy.get_type('java.io.File')
     width = product.getSceneRasterWidth()
     height = product.getSceneRasterHeight()
     bandShape = (height, width)
+
+    if subset is None:
+        height_subset = height
+        width_subset = width
+    else:
+        sline,eline,scol,ecol = subset
+        height_subset = eline - sline + 1
+        width_subset = ecol - scol + 1
+    bandShape_subset = (height_subset, width_subset)
 
     dirname = os.path.dirname(baltic__product_path)
     outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
@@ -550,6 +595,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
                     bsources.append(product.getBand('B8A'))
                     [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
 
+            sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
                 band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
@@ -558,19 +604,21 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
                 band.setNoDataValue(np.nan)
                 band.setNoDataValueUsed(True)
 
-                sourceData = np.array(data[:, i], dtype='float64').reshape(bandShape)
+                sourceData[sline:eline+1,scol:ecol+1] = data[:, i].reshape(bandShape_subset)
                 band.setRasterData(ProductData.createInstance(sourceData))
 
 
     # Create empty bands for scalar fields
     if not scalar_dict is None:
+        sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
         for key in scalar_dict.keys():
             singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT64)
             singleBand.setNoDataValue(np.nan)
             singleBand.setNoDataValueUsed(True)
             data = scalar_dict[key].get('data')
             if not data is None:
-                sourceData = np.array(data, dtype='float64').reshape(bandShape)
+                sourceData[sline:eline+1,scol:ecol+1] = data.reshape(bandShape_subset)
+                #sourceData = np.array(data, dtype='float64').reshape(bandShape)
                 singleBand.setRasterData(ProductData.createInstance(sourceData))
 
     if copyOriginalProduct:
@@ -631,7 +679,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
         flagBand.setSampleCoding(L2FlagCoding)
 
     if add_Geometry:
-        oaa, oza, saa, sza = angle_Reader(product, sensor)
+        oaa, oza, saa, sza = angle_Reader(product, sensor, subset=subset)
         if sensor == 'OLCI':
             geomNames = ['OAA', 'OZA', 'SAA', 'SZA']
         elif sensor == 'S2MSI':
@@ -639,12 +687,13 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
 
         dataList = [oaa, oza, saa, sza]
 
+        sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
         for gn, data in zip(geomNames, dataList):
             singleBand = balticPACProduct.addBand(gn, ProductData.TYPE_FLOAT64)
             singleBand.setNoDataValue(np.nan)
             singleBand.setNoDataValueUsed(True)
 
-            sourceData = np.array(data, dtype='float64').reshape(bandShape)
+            sourceData[sline:eline+1,scol:ecol+1] = data.reshape(bandShape_subset)
             singleBand.setRasterData(ProductData.createInstance(sourceData))
 
 
@@ -770,44 +819,41 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
 
 
     # Get scene size
-    width = product.getSceneRasterWidth()
-    height = product.getSceneRasterHeight()
+    if subset is None:
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
     npix = width*height
 
     # Read L1B product and convert Radiance to reflectance
-    rho_toa = radianceToReflectance_Reader(product, sensor=sensor)
+    rho_toa = radianceToReflectance_Reader(product, sensor=sensor, subset=subset)
 
     # Classify pixels with Level-1 flags
-    valid = check_valid_pixel_expression_L1(product, sensor)
-    print(np.sum(valid), len(valid))
+    valid = check_valid_pixel_expression_L1(product, sensor, subset=subset)
+    print("%d valid pixels on %d"%(np.sum(valid), len(valid)))
 
     if add_Idepix_Flags:
         idepixProduct = run_IdePix_processor(product, sensor)
-        validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor)
+        validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor, subset=subset)
         valid = np.logical_and(valid, validIdepix)
     else:
         idepixProduct=None
 
 
-    # Limit processing to sub-box
-    if subset: #FIXME should be only applied to input raster file
-         sline,eline,scol,ecol = subset
-         valid_subset = np.zeros((height,width),dtype='bool')
-         valid_subset[sline:eline+1,scol:ecol+1] = valid.reshape(height,width)[sline:eline+1,scol:ecol+1]
-         valid = valid_subset.reshape(height*width)
-         del valid_subset
-    
     # Read geometry and compute relative azimuth angle
-    oaa, oza, saa, sza = angle_Reader(product, sensor)
+    oaa, oza, saa, sza = angle_Reader(product, sensor, subset=subset)
     raa, nn_raa = calculate_diff_azim(oaa, saa)
 
     # Read wavelength (per-pixel for OLCI) and geolocation
     if sensor == 'OLCI':
         # Read per-pixel wavelength
-        wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False)
+        wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False, subset=subset)
         # Read latitude, longitude
-        latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False)
-        longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False)
+        latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False, subset=subset)
+        longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False, subset=subset)
     elif sensor == 'S2MSI':
         # Duplicate wavelengths for all pixels
         wavelength = np.tile(bands_sat,(len(sza),1)) #TODO: integrate band with S2 SRF
@@ -815,28 +861,28 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         latitude, longitude = getGeoPositionsForS2Product(product)
 
     # Read day in the year
-    yday = get_yday(product, reshape=False)
+    yday = get_yday(product, reshape=False, subset=subset)
 
     # Read meteo data
     print( "Read meteo data")
     if sensor == 'OLCI':
-        pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False)
-        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False)
-        tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False)
-        wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False)
-        wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False)
+        pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False, subset=subset)
+        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False, subset=subset)
+        tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False, subset=subset)
+        wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False, subset=subset)
+        wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False, subset=subset)
         windm = np.sqrt(wind_u*wind_u+wind_v*wind_v)
-        altitude = get_band_or_tiePointGrid(product, 'altitude', reshape=False)
+        altitude = get_band_or_tiePointGrid(product, 'altitude', reshape=False, subset=subset)
     elif sensor == 'S2MSI':
         bandNames = list(product.getBandNames())
         ## only for match-up data with included meteorology.
         if ('pressure' in bandNames) and ('ozone' in bandNames) and ('tcwv' in bandNames)\
                 and ('wind_u' in bandNames) and ('wind_v' in bandNames):
-            pressure = get_band_or_tiePointGrid(product, 'pressure', reshape=False)
-            ozone = get_band_or_tiePointGrid(product, 'ozone', reshape=False)
-            tcwv = get_band_or_tiePointGrid(product, 'tcwv', reshape=False)
-            wind_u = get_band_or_tiePointGrid(product, 'wind_u', reshape=False)
-            wind_v = get_band_or_tiePointGrid(product, 'wind_v', reshape=False)
+            pressure = get_band_or_tiePointGrid(product, 'pressure', reshape=False, subset=subset)
+            ozone = get_band_or_tiePointGrid(product, 'ozone', reshape=False, subset=subset)
+            tcwv = get_band_or_tiePointGrid(product, 'tcwv', reshape=False, subset=subset)
+            wind_u = get_band_or_tiePointGrid(product, 'wind_u', reshape=False, subset=subset)
+            wind_v = get_band_or_tiePointGrid(product, 'wind_v', reshape=False, subset=subset)
             windm = np.sqrt(wind_v * wind_v + wind_u * wind_u)
         else:
             if atmosphericAuxDataPath != None:
@@ -961,6 +1007,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # input: spectral_dict holds the spectral fields
     #        scalar_dict holds the scalar fields
     ###
+    print("Write output")
     baltic__product_path = os.path.join(outpath,'baltic_' + filename)
     if outputSpectral:
         spectral_dict = {}
@@ -985,7 +1032,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
                              copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
-                             add_Geometry=True)
+                             add_Geometry=True,subset=subset)
 
     product.closeProductReader()
 
