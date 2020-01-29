@@ -56,18 +56,20 @@ from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPosition
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Define NNs as global variables
-def read_NNs(sensor):
+def read_NNs(sensor, NNversion):
     global nnForwardFilePath, nnBackwardFilePath, nnNormFilePath
     global nn_iop_rw, nn_rw_iop, nn_rw_rwnorm
 
     # Define paths
     if sensor == 'OLCI':
-        nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-        nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net"
-        nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
-        #nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
-        #nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net"
-        #nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
+        if NNversion == 'v2':
+            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net"
+            nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        elif NNversion == 'v3':
+            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net"
+            nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
     elif sensor == 'S2MSI':
         nnForwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
         nnBackwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
@@ -78,9 +80,9 @@ def read_NNs(sensor):
     nnfile = open(nnForwardFilePath, 'r')
     nnCode = nnfile.read()
     nn_iop_rw = NNffbpAlphaTabFast(nnCode)
-    """nnfile = open(nnBackwardFilePath, 'r')
+    nnfile = open(nnBackwardFilePath, 'r')
     nnCode = nnfile.read()
-    nn_rw_iop = NNffbpAlphaTabFast(nnCode)"""
+    nn_rw_iop = NNffbpAlphaTabFast(nnCode)
     nnfile = open(nnNormFilePath, 'r')
     nnCode = nnfile.read()
     nn_rw_rwnorm = NNffbpAlphaTabFast(nnCode)
@@ -411,6 +413,53 @@ def apply_forwardNN_IOP_to_rhow(log_iop, sun_zenith, view_zenith, diff_azimuth, 
 
     return output
 
+def apply_backwardNN_rhow_to_IOP(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_rw_iop, iband_NN_backward, inputRange_backward, T=15, S=35):
+    """
+    Apply the backwardNN: rhow to IOP
+    input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
+            np.array sza, shape = (Npixels,)
+            np.array oza, shape = (Npixels,)
+            np.array raa, shape = (Npixels,); range: 0-180
+    returns: np.array log_iop, shape = (Npixels x log_iop= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit))
+
+    T, S: currently constant #TODO take ECMWF temperature at sea surface?
+    valid ranges can be found at the beginning of the .net-file.
+
+    NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865 
+    """
+
+    # Initialise output
+    nBands = len(iband_NN_backward)
+    niop = 5
+    output = np.zeros((rhow.shape[0], niop)) + np.NaN
+    FlagConstraintApplied = np.zeros(rhow.shape[0])
+
+    ###
+    # Launch the NN
+    # CARE to the input bands
+    inputNN = np.zeros(nBands+5) -1. # care zero used by default for de-activated IOPs when niop<5
+    inputNN[3] = T
+    inputNN[4] = S
+
+    for i in range(rhow.shape[0]):
+        if valid_data[i]:
+            inputNN[0] = sun_zenith[i]
+            inputNN[1] = view_zenith[i]
+            inputNN[2] = diff_azimuth[i]
+            for j,var in enumerate(list(inputRange_backward.keys())[5:]):
+                # Threshold input rhow, in case of negative or too high value
+                j_glob = iband_NN_backward[j]
+                # inputRange=list(inputRange_backward.keys())[5:][j]
+                rhow_in = max(rhow[i, j_glob], np.exp(inputRange_backward[var][0]))
+                rhow_in = min(rhow_in, np.exp(inputRange_backward[var][1]))
+                if rhow_in != rhow[i, j_glob]:
+                    FlagConstraintApplied[i] = 1
+                inputNN[j+5] = np.log(rhow_in)
+            output[i,:] = np.array(nn_rw_iop.calc(inputNN), dtype=np.float32) # log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+
+    return output, FlagConstraintApplied
+
 def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, nn_rw_rwnorm, iband_NN_norm, inputRange_norm, T=15, S=35):
     """
     Apply NN :  rhow to rhownorm
@@ -682,17 +731,18 @@ def ac_cost(log_iop, sensor, nbands, iband_NN, iband_corr, iband_chi2, rho_rc, t
 
 def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
-                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False):
+                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False, NNversion='v3'):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
     """
 
     # Read the NNs
-    read_NNs(sensor)
+    read_NNs(sensor, NNversion)
 
     # Read NNs input range
     inputRange_forward = read_NN_input_ranges_fromFile(nnForwardFilePath)
+    inputRange_backward = read_NN_input_ranges_fromFile(nnBackwardFilePath)
     inputRange_norm = read_NN_input_ranges_fromFile(nnNormFilePath)
 
     # Get sensor & AC bands
@@ -701,6 +751,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     iband_corr = np.searchsorted(bands_sat, bands_corr)
     iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
     iband_NN_forward = np.searchsorted(bands_sat, bands_forwardNN)
+    iband_NN_backward = np.searchsorted(bands_sat, bands_backwardNN)
     iband_NN_norm = np.searchsorted(bands_sat, bands_normNN)
     iband_abs = np.searchsorted(bands_sat, bands_abs)
 
@@ -887,6 +938,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     rho_w = (rho_rc - rho_ag_mod)/td
 
     # Set absorption band to NaN
+    rho_ag[:,iband_abs] = np.NaN
+    rho_ag_mod[:,iband_abs] = np.NaN
+    rho_rc[:,iband_abs] = np.NaN
     rho_w[:,iband_abs] = np.NaN
 
     # Apply normalisation
@@ -894,6 +948,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     rho_wn, oorFlagArray = apply_NN_rhow_to_rhownorm(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_rwnorm, iband_NN_norm, inputRange_norm)
 
     l2flags[np.array(oorFlagArray==1)] += 2**1
+
+    # Compute IOPs if requested
+    if add_c2rccIOPs:
+        log_iop_c2rcc, oorBackwardNN = apply_backwardNN_rhow_to_IOP(rho_w, sza, oza, nn_raa, sensor, valid, nn_rw_iop, iband_NN_backward, inputRange_backward)
 
     # TODO uncertainties
     # unc_rhow =
@@ -915,6 +973,13 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
         for field in outputScalar.keys():
             scalar_dict[field] = {'data': eval(outputScalar[field])}
     else: scalar_dict = None
+
+    if add_c2rccIOPs:
+        iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
+        if scalar_dict is None:
+            scalar_dict = {}
+        for i, field in enumerate(iop_names):
+            scalar_dict[field] = {'data': np.exp(log_iop_c2rcc[:,i])}
 
     write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
