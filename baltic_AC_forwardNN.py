@@ -166,7 +166,7 @@ def get_yday(product,reshape=True, subset=None):
     width_full = product.getSceneRasterWidth()
     if subset is None:
         height = height_full
-        width = witdth_full
+        width = width_full
     else:
         sline,eline,scol,ecol = subset
         height = eline - sline + 1
@@ -559,6 +559,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     if subset is None:
         height_subset = height
         width_subset = width
+        sline, eline, scol, ecol = 0, height-1, 0, width -1
     else:
         sline,eline,scol,ecol = subset
         height_subset = eline - sline + 1
