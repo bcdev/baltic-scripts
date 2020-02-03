@@ -21,8 +21,8 @@ def run_bwNN_fwNN_loop(rhow, sza, oza, nn_raa, valid):
     # bands_forwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754]
     # bands_backwardNN = [400, 412, 443, 490, 510, 560, 620, 665, 674, 681, 709, 754]
 
-    bwpath = "E:\Documents\projects\Baltic+\In-waterModel\\NN_training\\bwNN_LossRhow_c2rcc20171221_withAngles\\bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.h5"
-    fwpath = "E:\Documents\projects\Baltic+\In-waterModel\\NN_training\\bwNN_LossRhow_c2rcc20171221_withAngles\\fwNNc2rcc_linearLossI8x97x97x97xO12batch300_epoch200000_loss0.0.h5"
+    bwpath = "NN_reciprocal/bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.h5"
+    fwpath = "NN_reciprocal/fwNNc2rcc_linearLossI8x97x97x97xO12batch300_epoch200000_loss0.0.h5"
     model_fw = tf.keras.models.load_model(fwpath)
     model_bw = tf.keras.models.load_model(bwpath)
 
