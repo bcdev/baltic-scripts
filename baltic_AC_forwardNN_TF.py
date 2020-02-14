@@ -15,8 +15,8 @@ import glob
 import tensorflow as tf
 
 # snappy import
-sys.path.append('/home/cmazeran/.snap/snap-python')
-#sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+# sys.path.append('/home/cmazeran/.snap/snap-python')
+sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
@@ -54,12 +54,14 @@ import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # Set locale for proper time reading with datetime
-locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+# locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Define NNs as global variables
 def read_NNs(sensor, NNversion):
     global nnForwardFilePath, nnBackwardFilePath, nnNormFilePath
     global nn_forward, nn_backward
+    global inputRange_forward
+    global nn_iop_rw, nn_rw_iop
 
     # Define paths
     if sensor == 'OLCI':
@@ -73,14 +75,51 @@ def read_NNs(sensor, NNversion):
             nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
         elif NNversion == 'TF':
             nnForwardFilePath = "NN_reciprocal/fwNNc2rcc_linearLossI8x97x97x97xO12batch300_epoch200000_loss0.0.h5"
-            nnBackwardFilePath = "NN_reciprocal/bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.h5" 
+            nnBackwardFilePath = "NN_reciprocal/bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.h5"
+        elif NNversion == 'TF_Schiller': #input + output like 'TF'; converted into old .net format and readable with old c-functions, which might be faster than tensorflow??
+            nnForwardFilePath = "NN_reciprocal/fwNNc2rcc_linearLossI8x97x97x97xO12batch300_epoch200000_loss0.0.net"
+            nnBackwardFilePath = "NN_reciprocal/bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.net"
+
     elif sensor == 'S2MSI':
         nnForwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
         nnBackwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
         nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
 
-    nn_forward = tf.keras.models.load_model(nnForwardFilePath)
-    nn_backward = tf.keras.models.load_model(nnBackwardFilePath)
+    if NNversion == 'TF':
+        nn_forward = tf.keras.models.load_model(nnForwardFilePath)
+        nn_backward = tf.keras.models.load_model(nnBackwardFilePath)
+        #col_names = ['apig', 'adet', 'agelb', 'bpart', 'bwit']
+        inputRange_forward = {
+           'apig' :(-4.431202411651611 , 0.8628255128860474),
+            'adet':(-4.135058403015137, 2.091784954071045),
+            'agelb': (-1.897108793258667, 2.6810054779052734),
+            'bpart': (-2.7132925987243652, 4.960668087005615),
+            'bwit':  (-3.204205274581909, 5.568716526031494),
+            'nn_raa':   (-1.0, 1.0),
+            'oza': (0.573578953742981, 1.0),
+            'sza': (0.25882574915885925, 1.0)
+        }
+    if NNversion == 'TF_Schiller':
+        inputRange_forward = {
+            'apig': (-4.431202411651611, 0.8628255128860474),
+            'adet': (-4.135058403015137, 2.091784954071045),
+            'agelb': (-1.897108793258667, 2.6810054779052734),
+            'bpart': (-2.7132925987243652, 4.960668087005615),
+            'bwit': (-3.204205274581909, 5.568716526031494),
+            'nn_raa': (-1.0, 1.0),
+            'oza': (0.573578953742981, 1.0),
+            'sza': (0.25882574915885925, 1.0)
+        }
+        NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
+        nnfile = open(nnForwardFilePath, 'r')
+        nnCode = nnfile.read()
+        nn_iop_rw = NNffbpAlphaTabFast(nnCode)
+        nnfile.close()
+        nnfile = open(nnBackwardFilePath, 'r')
+        nnCode = nnfile.read()
+        nn_rw_iop = NNffbpAlphaTabFast(nnCode)
+        nnfile.close()
+
 
 def read_NN_input_ranges_fromFile(nnFilePath):
     """ Read input range for the forward NN """
@@ -374,6 +413,84 @@ def check_valid_pixel_expression_L1(product, sensor, subset=None):
 
     return valid_pixel_flag
 
+
+def apply_forwardNN_newNN_oldFormat(log_iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, iband_NN_forward):
+    """
+        Apply the forwardNN: IOP to rhow (trained on c2rcc simulations)
+        input: numpy array log_iop, shape = (Npixels x log_iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
+                np.array raa, shape = (Npixels,) range: 0-180
+                np.array oza, shape = (Npixels,)
+                np.array sza, shape = (Npixels,);
+        returns: np.array rhow, shape = (Npixels, wavelengths)
+
+        valid ranges can be found at the beginning of the .net-file.
+
+        NN output for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+        NN output for S2MSI (6 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740
+    """
+
+    # Initialise output
+    nBands = len(iband_NN_forward)
+    rhow = np.zeros((log_iop.shape[0], nBands)) + np.NaN
+
+    # Prepare the NN
+    NN_input = np.zeros((log_iop.shape[0], 5 + 3)) - 1.  # IOPS + angles CARE -1 used by default for IOP when niop < 5
+    for i in range(log_iop.shape[1]):
+        NN_input[:, i] = log_iop[:, i]
+    NN_input[:, 7] = np.cos(sun_zenith * np.pi / 180.)
+    NN_input[:, 6] = np.cos(view_zenith * np.pi / 180.)
+    NN_input[:, 5] = np.cos(diff_azimuth * np.pi / 180.)
+
+    for i in range(log_iop.shape[0]):
+        if valid_data[i]:
+            log_rw_nn2 = np.array(nn_iop_rw.calc(NN_input[i,:]), dtype=np.float32)
+            rhow[i, :] = np.exp(log_rw_nn2)
+
+    return rhow
+
+def apply_backwardNN_newNN_oldFormat(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data):
+    """
+    Apply the backwardNN: rhow to IOP (trained on c2rcc simulations)
+    input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
+            np.array raa, shape = (Npixels,); range: 0-180
+            np.array oza, shape = (Npixels,)
+            np.array sza, shape = (Npixels,)
+    returns: np.array log_iop, shape = (Npixels x log_iop= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit))
+
+    valid ranges can be found at the beginning of the .net-file.
+
+    NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
+    """
+
+    # Initialise output
+    log_iop = np.zeros((rhow.shape[0], 5)) + np.NaN
+
+    # Prepare the NN, limit to rhow >0
+    rhow_pos = np.all(rhow > 0, axis=1)
+    valid2 = valid_data & rhow_pos
+    NN_input = np.zeros((rhow.shape[0], rhow.shape[1] + 3), dtype='float32') + np.NaN  # cos angles + log(rhow)
+    NN_input[:, 0] = np.cos(sun_zenith * np.pi / 180.)
+    NN_input[:, 1] = np.cos(view_zenith * np.pi / 180.)
+    NN_input[:, 2] = np.cos(diff_azimuth * np.pi / 180.)
+    NN_input[:, 3:] = np.log(rhow)
+
+    for i in range(rhow.shape[0]):
+        if valid2[i]:
+            # for j,var in enumerate(list(inputRange_backward.keys())[3:]):
+            #     # Threshold input rhow, in case of negative or too high value
+            #     j_glob = iband_NN_backward[j]
+            #     # inputRange=list(inputRange_backward.keys())[5:][j]
+            #     rhow_in = max(rhow[i, j_glob], np.exp(inputRange_backward[var][0]))
+            #     rhow_in = min(rhow_in, np.exp(inputRange_backward[var][1]))
+            #     if rhow_in != rhow[i, j_glob]:
+            #         FlagConstraintApplied[i] = 1
+            #     inputNN[j+5] = np.log(rhow_in)
+            log_iop[i,:] = np.array(nn_rw_iop.calc(NN_input[i, :]), dtype=np.float32) # output: log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+
+    return log_iop
+
+
 def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid, iband_NN_forward):
     """
     Apply the forwardNN: IOP to rhow
@@ -397,18 +514,21 @@ def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, sensor, vali
     NN_input = np.zeros((log_iop.shape[0],5+3)) -1. # IOPS + angles CARE -1 used by default for IOP when niop < 5
     for i in range(log_iop.shape[1]):
         NN_input[:,i] = log_iop[:,i]
-    NN_input[:,5] = np.cos(sun_zenith * np.pi / 180.)
+    NN_input[:,7] = np.cos(sun_zenith * np.pi / 180.)
     NN_input[:,6] = np.cos(view_zenith * np.pi / 180.)
-    NN_input[:,7] = np.cos(diff_azimuth * np.pi / 180.)
+    NN_input[:,5] = np.cos(diff_azimuth * np.pi / 180.)
 
     # Limit to valid pixels
     NN_input = np.array(NN_input[valid, :], dtype='float32')
 
-    # Launch the NN
-    sess = tf.InteractiveSession()
-    nn_forward = tf.keras.models.load_model(nnForwardFilePath)
-    log_rhow = nn_forward(NN_input).eval(session=sess)
-    sess.close()
+    # Launch the NN , in tf v1.X
+    # sess = tf.InteractiveSession()
+    # nn_forward = tf.keras.models.load_model(nnForwardFilePath)
+    # log_rhow = nn_forward(NN_input).eval(session=sess)
+    # sess.close()
+
+    # launch NN in tf v2.x
+    log_rhow = nn_forward(NN_input)
 
     # Get NN output
     for i in range(nBands):
@@ -504,6 +624,7 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
             sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
+                # print(brtoa_name)
                 band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
                 if outputProductFormat == 'BEAM-DIMAP':
                     ProductUtils.copySpectralBandProperties(bsources[i], band)
@@ -650,7 +771,7 @@ def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
 
 def check_and_constrain_iop(log_iop, inputRange,sensor):
     for i in range(len(log_iop)):
-        var = inputRange.keys()[5+i] # discard first variables (angles, temperature, salinity)
+        var = list(inputRange.keys())[i] # IOPs are first variables
         mi = inputRange[var][0]
         ma = inputRange[var][1]
         if log_iop[i] < mi:
@@ -669,9 +790,12 @@ def ac_cost(log_iop, sensor, nbands, iband_NN_forward, iband_corr, iband_chi2, r
     rho_wmod = np.zeros(nbands) + np.NaN
 
     # Check iop range and apply constraints to forwardNN input range
-    #log_iop = check_and_constrain_iop(log_iop, inputRange_forward, sensor)
+    log_iop = check_and_constrain_iop(log_iop, inputRange_forward, sensor)
 
     rho_wmod[iband_NN_forward] = apply_forwardNN(np.array([log_iop]), np.array([sza]), np.array([oza]), np.array([raa]), sensor,np.array([valid]), iband_NN_forward)
+    # rho_wmod[iband_NN_forward] = apply_forwardNN_newNN_oldFormat(np.array([log_iop]), np.array([sza]), np.array([oza]), np.array([raa]),
+    #                                              sensor, np.array([valid]), iband_NN_forward)
+
     # Compute rho_ag and fit best atmospheric model
     rho_ag = rho_rc - td*rho_wmod
     coefs = np.einsum('...ij,...j->...i', Aatm_inv, rho_ag[iband_corr])
@@ -681,6 +805,7 @@ def ac_cost(log_iop, sensor, nbands, iband_NN_forward, iband_corr, iband_chi2, r
     # Compute residual and chi2
     res  = trho_w[iband_chi2]-td[iband_chi2]*rho_wmod[iband_chi2] # TODO one other option is to minimize at TOA by multiplying by td
     chi2 = np.sum(res*res) # TODO cost function should include weighting; option in relative difference
+    # print(chi2)
     return chi2
 
 
@@ -752,6 +877,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Read geometry and compute relative azimuth angle
     oaa, oza, saa, sza = angle_Reader(product, sensor, subset=subset)
     raa, nn_raa = calculate_diff_azim(oaa, saa)
+
+    print('cos sza', np.min(np.cos(sza*np.pi/180.)), np.max(np.cos(sza*np.pi/180.)))
+    print('cos oza', np.min(np.cos(oza * np.pi / 180.)), np.max(np.cos(oza * np.pi / 180.)))
+    print('cos nn_raa', np.min(np.cos(nn_raa * np.pi / 180.)), np.max(np.cos(nn_raa * np.pi / 180.)))
 
     # Read wavelength (per-pixel for OLCI) and geolocation
     if sensor == 'OLCI':
@@ -857,6 +986,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     ipix_proc = 0
     npix_proc = np.count_nonzero(valid)
 
+    iterations = np.zeros(npix) + np.NaN
+    chi2_AC = np.zeros(npix) + np.NaN
 
     for ipix in range(npix):
         if not valid[ipix]: continue
@@ -868,12 +999,17 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             sys.stdout.flush()
         # First guess
         #log_iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        log_iop_0 = np.zeros(niop) -3. # array([-3., -3., -3., -3., -3.])
+        # log_iop_0 = np.zeros(niop) -1. # array([-3., -3., -3., -3., -3.])
+        log_iop_0 = np.zeros(niop) -2.
+        # log_iop_0 = np.array((-1., -1., 0.,0.,0.))[:niop]
+
         # Nelder-Mead optimization
         args_pix = (sensor, nbands, iband_NN_forward, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix])
-        NM_res = minimize(ac_cost, log_iop_0, args=args_pix, method='nelder-mead', options={'maxiter':10, 'disp': True})
+        NM_res = minimize(ac_cost, log_iop_0, args=args_pix, method='nelder-mead', options={'maxiter':300, 'disp': True})
         log_iop[ipix,:] = NM_res.x
         success = NM_res.success
+        iterations[ipix] = NM_res.nit
+        chi2_AC[ipix] = NM_res.fun
         if not success:
             l2flags[ipix] += 2 ** 2
         ipix_proc += 1
@@ -883,6 +1019,9 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     print("Compute final residual")
     rho_wmod = np.zeros((npix, nbands)) + np.NaN
     rho_wmod[:, iband_NN_forward] = apply_forwardNN(log_iop, sza, oza, nn_raa, sensor, valid, iband_NN_forward)
+
+    # rho_wmod[:, iband_NN_forward] = apply_forwardNN_newNN_oldFormat(log_iop, sza, oza, nn_raa, sensor, valid, iband_NN_forward)
+
     rho_ag_mod = np.zeros((npix, nbands)) + np.NaN
     rho_ag = rho_rc - td*rho_wmod
     coefs = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[valid][:,iband_corr])
@@ -898,8 +1037,10 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     # Apply normalisation
     print("Normalize spectra")
     log_iop2 = apply_backwardNN(rho_w[:,iband_NN_backward], sza, oza, nn_raa, sensor, valid)
+    # log_iop2 = apply_backwardNN_newNN_oldFormat(rho_w[:, iband_NN_backward], sza, oza, nn_raa, sensor, valid)
     angle0 = np.zeros(npix) #TODO check shape
     rho_wn = apply_forwardNN(log_iop2, angle0, angle0, angle0, sensor, valid, iband_NN_forward)
+    # rho_wn = apply_forwardNN_newNN_oldFormat(log_iop2, angle0, angle0, angle0, sensor, valid, iband_NN_forward)
 
     #l2flags[np.array(oorFlagArray==1)] += 2**1 TODO flags?
 
