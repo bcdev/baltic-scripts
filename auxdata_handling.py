@@ -7,7 +7,8 @@ import datetime
 from datetime import date
 
 #sys.path.append('/home/cmazeran/.snap/snap-python')
-sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
+# sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
+sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
 import snappy as snp
 from snappy import jpy
 from snappy import PixelPos
