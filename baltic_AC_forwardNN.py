@@ -53,7 +53,7 @@ import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # Set locale for proper time reading with datetime
-locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+# locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Define NNs as global variables
 def read_NNs(sensor, NNversion):
@@ -462,7 +462,7 @@ def apply_backwardNN_rhow_to_IOP(rhow, sun_zenith, view_zenith, diff_azimuth, se
     valid ranges can be found at the beginning of the .net-file.
 
     NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
-    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865 
+    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
     """
 
     # Initialise output
@@ -533,7 +533,8 @@ def apply_NN_rhow_to_rhownorm(rhow, sun_zenith, view_zenith, diff_azimuth, senso
             inputNN[0] = sun_zenith[i]
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
-            for j,var in enumerate(inputRange_norm.keys()[5:]):
+
+            for j,var in enumerate(list(inputRange_norm.keys())[5:]):
                 # Threshold input rhow, in case of negative or too high value
                 j_glob = iband_NN_norm[j]
                 rhow_in = max(rhow[i, j_glob], np.exp(inputRange_norm[var][0]))
@@ -744,8 +745,9 @@ def polymer_matrix(bands_sat,bands,valid,rho_g,rho_r,sza,oza,wavelength,adf_ppp)
     return Aatm, Aatm_inv
 
 def check_and_constrain_iop(log_iop, inputRange,sensor):
+    test = list(inputRange.keys())
     for i in range(len(log_iop)):
-        var = inputRange.keys()[5+i] # discard first variables (angles, temperature, salinity)
+        var = test[5+i] # discard first variables (angles, temperature, salinity)
         mi = inputRange[var][0]
         ma = inputRange[var][1]
         if log_iop[i] < mi:
@@ -952,6 +954,8 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
     ipix_proc = 0
     npix_proc = np.count_nonzero(valid)
 
+    iterations = np.zeros(npix) + np.NaN
+    chi2_AC = np.zeros(npix) + np.NaN
 
     for ipix in range(npix):
         if not valid[ipix]: continue
@@ -963,12 +967,15 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
             sys.stdout.flush()
         # First guess
         #log_iop_0 = np.array([-4.3414865, -4.956355, - 3.7658699, - 1.8608053, - 2.694404])
-        log_iop_0 = np.zeros(niop) -3. # array([-3., -3., -3., -3., -3.])
+        log_iop_0 = np.array((-1., -1., 0., 0., 0.))[:niop]
+        # log_iop_0 = np.zeros(niop)  # array([-3., -3., -3., -3., -3.])
         # Nelder-Mead optimization
         args_pix = (sensor, nbands, iband_NN_forward, iband_corr, iband_chi2, rho_rc[ipix], td[ipix], sza[ipix], oza[ipix], nn_raa[ipix], Aatm[ipix], Aatm_inv[ipix], valid[ipix], inputRange_forward)
-        NM_res = minimize(ac_cost, log_iop_0, args=args_pix, method='nelder-mead')#, options={'maxiter':150', disp': True})
+        NM_res = minimize(ac_cost, log_iop_0, args=args_pix, method='nelder-mead', options={'maxiter':300, 'disp': True})
         log_iop[ipix,:] = NM_res.x
         success = NM_res.success
+        iterations[ipix] = NM_res.nit
+        chi2_AC[ipix] = NM_res.fun
         if not success:
             l2flags[ipix] += 2 ** 2
         ipix_proc += 1
@@ -1033,7 +1040,7 @@ def baltic_AC_forwardNN(scene_path='', filename='', outpath='', sensor='', subse
                              copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
-                             add_Geometry=True,subset=subset)
+                             add_Geometry=True, subset=subset)
 
     product.closeProductReader()
 
