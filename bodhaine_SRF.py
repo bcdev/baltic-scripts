@@ -83,8 +83,8 @@ def rod_SRF(bandNo, co2=360., latitude=None, altitude=None, pressure=None):
     C_CO2 = co2 / 10000.  # CO2 concentration in part per volume per percent
     Ns = 2.5469E19  # Molecular density of gas in molecules / cm3 (288.15K, 1013.25mb)
 
-    print("[Rayleigh optical thickness with SRF]")
-    print("SRF: ", bandNo)
+    #print("[Rayleigh optical thickness with SRF]")
+    #print("SRF: ", bandNo)
     lam_nm = SRF_lam.iloc[:, bandNo]  # wavelengths of band i in nm for spectral-response-function.
 
     lam = lam_nm / 1000.0  # wavelength in micrometer
