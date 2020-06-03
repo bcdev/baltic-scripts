@@ -115,8 +115,8 @@ def read_NNs(sensor, NNversion, NNIOPversion):
             'nn_raa':   (-1.0, 1.0),
             'oza': (0.49999997, 1.0),
             'sza': (0.25881895, 1.0)
-        }
-
+            }
+        
 def open_NN(nnFilePath, NNversion):
     global session
 
@@ -590,6 +590,7 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNI
     log_iop = np.zeros((rhow.shape[0], 5)) + np.NaN
 
     # Prepare the NN, limit to rhow >0
+    rhow[rhow[:,11]<0,11]=0.000009075 # Hard-coded at 754 from input range of backward NN
     rhow_pos = np.all(rhow>0, axis=1)
     valid2 = valid & rhow_pos
 
@@ -1036,8 +1037,12 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
 
     if add_c2rccIOPs:
         # Apply NNIOP to compute final IOPs
-        # Care that iband_backwardNN is for NNversion; it wil work if NNIOPversion is v2 or v3 because only first bands are used
-        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNN], sza, oza, nn_raa, valid, NNIOPversion, NNIOP=True)
+        # Care that iband_backwardNN is for NNversion; TODO in a more generic way, ideally with bands given in the NN
+        if NNIOPversion == 'TF':
+            iband_backwardNNIOP = iband_backwardNN
+        elif NNIOPversion == 'v2' or NNIOPversion == 'v3':
+            iband_backwardNNIOP = iband_backwardNN[0:12]
+        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNNIOP], sza, oza, nn_raa, valid, NNIOPversion, NNIOP=True)
         iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
         if scalar_dict is None:
             scalar_dict = {}
