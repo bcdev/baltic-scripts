@@ -63,53 +63,49 @@ locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 
 # Define NNs as global variables
-def read_NNs(sensor, NNversion):
-    global nnForwardFilePath, nnBackwardFilePath, nnNormFilePath
-    global nn_forward, nn_backward
+def read_NNs(sensor, NNversion, NNIOPversion):
+    global nn_forward, nn_backward, nn_backward_iop
     global inputRange_forward
-    global nn_iop_rw, nn_rw_iop
     global session
 
     # Define paths
-    if sensor == 'OLCI':
-        if NNversion == 'v2':
-            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
-            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net"
-        elif NNversion == 'v3':
-            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
-            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net"
-        elif NNversion == 'TF':
-            nnForwardFilePath = "NN_TF/fwNNHL_logLossI8x50x40x40xO16_auxVarN0_batch20000_epoch60000_loss0.0.h5"
-            #nnBackwardFilePath = "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch90000_loss0.0.h5"
-            nnBackwardFilePath = "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch200000_loss0.00059.h5"
-        
-    elif sensor == 'S2MSI':
-        nnForwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
-        nnBackwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
-    
+    nnFilePath = {
+            'OLCI' : {
+                'forward' : {
+                    'v2': "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net",
+                    'v3': "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net",
+                    'TF': "NN_TF/fwNNHL_logLossI8x50x40x40xO16_auxVarN0_batch20000_epoch60000_loss0.0.h5"
+                    },
+                'backward' : {
+                    'v2': "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net",
+                    'v3': "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net",
+                    'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch200000_loss0.00059.h5"
+                    #'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch90000_loss0.0.h5"
+                    }
+                },
+            'S2MSI' : {
+                'forward': {
+                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
+                    },
+                'backward' : {
+                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
+                    }
+                }
+            }
+
+    nnForwardFilePath = nnFilePath[sensor]['forward'][NNversion]
+    nnBackwardFilePath = nnFilePath[sensor]['backward'][NNversion]
+    nnBackwardIOPFilePath = nnFilePath[sensor]['backward'][NNIOPversion]
+
+    # Open NNs
+    nn_forward = open_NN(nnForwardFilePath, NNversion)
+    nn_backward = open_NN(nnBackwardFilePath, NNversion)
+    nn_backward_iop = open_NN(nnBackwardIOPFilePath, NNIOPversion)
+
+    # Define ranges for forward NN (not used by backward so far and missing for TF)
     if NNversion == 'v2' or NNversion == 'v3':
-        session = None
-        NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
-        nnfile = open(nnForwardFilePath, 'r')
-        nnCode = nnfile.read()
-        nn_forward = NNffbpAlphaTabFast(nnCode)
-        nnfile.close()
-        nnfile = open(nnBackwardFilePath, 'r')
-        nnCode = nnfile.read()
-        nn_backward = NNffbpAlphaTabFast(nnCode)
-        nnfile.close()
         inputRange_forward = read_NN_input_ranges_fromFile(nnForwardFilePath)
-        inputRange_backward = read_NN_input_ranges_fromFile(nnBackwardFilePath)
     elif NNversion == 'TF':
-        # Open session for tf v1.X
-        TF_version = tf.__version__.split('.')[0]
-        if TF_version == '1':
-            session = tf.InteractiveSession()
-        else:
-            session = None
-        # Read NNs
-        nn_forward = tf.keras.models.load_model(nnForwardFilePath)
-        nn_backward = tf.keras.models.load_model(nnBackwardFilePath)
         inputRange_forward = {
            'apig' :(-4.482068, 0.82549036),
             'adet':(-4.828189, 1.3987169),
@@ -120,7 +116,30 @@ def read_NNs(sensor, NNversion):
             'oza': (0.49999997, 1.0),
             'sza': (0.25881895, 1.0)
         }
-        # TODO inputRange_backward
+
+def open_NN(nnFilePath, NNversion):
+    global session
+
+    if NNversion == 'v2' or NNversion == 'v3':
+        if 'session' not in globals():
+            session = None
+        NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
+        nnfile = open(nnFilePath, 'r')
+        nnCode = nnfile.read()
+        nn_object = NNffbpAlphaTabFast(nnCode)
+        nnfile.close()
+    elif NNversion == 'TF':
+        # Open session for tf v1.X
+        TF_version = tf.__version__.split('.')[0]
+        if TF_version == '1':
+            if 'session' not in globals() or (session is None):
+                session = tf.InteractiveSession()
+        else:
+            session = None
+        # Read NNs
+        nn_object = tf.keras.models.load_model(nnFilePath)
+
+    return nn_object
 
 def read_NN_input_ranges_fromFile(nnFilePath):
     """ Read input range for the forward NN """
@@ -420,11 +439,11 @@ def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, NNver
     elif NNversion == 'TF':
         return apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
     
-def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNversion):
+def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNversion, NNIOP=False):
     if NNversion == 'v2' or NNversion == 'v3':
-        return apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid)
+        return apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP)
     elif NNversion == 'TF':
-        return apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid)
+        return apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP)
 
 def apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid):
     """
@@ -508,7 +527,7 @@ def apply_forwardNN_net(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, T
 
     return rhow
 
-def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid):
+def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP):
     """
     Apply the backwardNN: rhow to IOP
     input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
@@ -539,13 +558,19 @@ def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid):
 
     # Launch the NN
     if session is not None:
-        log_iop[valid2,:] = nn_backward(NN_input).eval(session=session)
+        if NNIOP:
+            log_iop[valid2,:] = nn_backward_iop(NN_input).eval(session=session)
+        else:
+            log_iop[valid2,:] = nn_backward(NN_input).eval(session=session)
     else:
-        log_iop[valid2,:] = nn_backward(NN_input)
+        if NNIOP:
+            log_iop[valid2,:] = nn_backward_iop(NN_input)
+        else:
+            log_iop[valid2,:] = nn_backward(NN_input)
 
     return log_iop
 
-def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, T=15, S=35):
+def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP, T=15, S=35):
     """
     Apply the backwardNN: rhow to IOP
     input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
@@ -583,7 +608,10 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, T=1
             inputNN[1] = view_zenith[i]
             inputNN[2] = diff_azimuth[i]
             inputNN[5:] = np.log(rhow[i, :])
-            log_iop[i, :] = np.array(nn_backward.calc(inputNN), dtype=np.float32)
+            if NNIOP:
+                log_iop[i, :] = np.array(nn_backward_iop.calc(inputNN), dtype=np.float32)
+            else:
+                log_iop[i, :] = np.array(nn_backward.calc(inputNN), dtype=np.float32)
 
     return log_iop
 
@@ -797,7 +825,7 @@ def check_and_constrain_iop(log_iop, inputRange):
 
 def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
                         outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
-                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False, NNversion='v3'):
+                        atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False, NNversion='TF', NNIOPversion='v2'):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -805,7 +833,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
 
 
     # Read the NNs
-    read_NNs(sensor, NNversion)
+    read_NNs(sensor, NNversion, NNIOPversion)
 
     # Get sensor & AC bands
     global bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs
@@ -997,7 +1025,9 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
     else: scalar_dict = None
 
     if add_c2rccIOPs:
-        log_iop2 = apply_backwardNN(rho_w[:,iband_backwardNN], sza, oza, nn_raa, valid, NNversion)
+        # Apply NNIOP to compute final IOPs
+        # Care that iband_backwardNN is for NNversion; it wil work if NNIOPversion is v2 or v3 because only first bands are used
+        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNN], sza, oza, nn_raa, valid, NNIOPversion, NNIOP=True)
         iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
         if scalar_dict is None:
             scalar_dict = {}
