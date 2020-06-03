@@ -979,27 +979,37 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
         rho_r, rho_molgli, rho_rc, tau_r, tau_r_mono = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
                                                                      pressure, windm, LUT_HYGEOS, altitude)
 
-    # Atmospheric model
-    print("Compute atmospheric matrices")
-    Aatm, Aatm_inv = polymer_matrix(bands_sat, bands_corr, valid, rho_g, rho_r, sza, oza, wavelength)
+    if np.sum(valid) != 0:
+        # Atmospheric model
+        print("Compute atmospheric matrices")
+        Aatm, Aatm_inv = polymer_matrix(bands_sat, bands_corr, valid, rho_g, rho_r, sza, oza, wavelength)
 
-    # Core AC
-    print("Inversion")
-    rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2 = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion)
-    print("")
+        # Core AC
+        print("Inversion")
+        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2 = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion)
+        print("")
 
-    # Set absorption band to NaN
-    rho_ag[:,iband_abs] = np.NaN
-    rho_ag_mod[:,iband_abs] = np.NaN
-    rho_rc[:,iband_abs] = np.NaN
-    rho_w[:,iband_abs] = np.NaN
+        # Set absorption band to NaN
+        rho_ag[:,iband_abs] = np.NaN
+        rho_ag_mod[:,iband_abs] = np.NaN
+        rho_rc[:,iband_abs] = np.NaN
+        rho_w[:,iband_abs] = np.NaN
 
-    # Apply normalisation
-    print("Normalize spectra")
-    angle0 = np.zeros(npix)
-    rho_wn = np.zeros((npix, nbands)) + np.nan
-    rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion)
-
+        # Apply normalisation
+        print("Normalize spectra")
+        angle0 = np.zeros(npix)
+        rho_wn = np.zeros((npix, nbands)) + np.nan
+        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion)
+    else:
+        rho_w = np.zeros((npix, nbands)) + np.nan
+        rho_wn = np.zeros((npix, nbands)) + np.nan
+        rho_wmod = np.zeros((npix, nbands)) + np.nan
+        log_iop = np.zeros((npix, niop)) + np.nan
+        rho_ag = np.zeros((npix, nbands)) + np.nan
+        rho_ag_mod = np.zeros((npix, nbands)) + np.nan
+        l2flags = np.zeros(npix) + np.nan
+        chi2 = np.zeros(npix) + np.nan
+    
     #l2flags[np.array(oorFlagArray==1)] += 2**1 TODO flags?
 
     # TODO uncertainties
