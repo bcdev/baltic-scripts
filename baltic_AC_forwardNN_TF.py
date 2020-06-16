@@ -325,6 +325,7 @@ def run_IdePix_processor(product, sensor):
     idepix_product = None
 
     if sensor == 'OLCI':
+        #idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product) # SNAP v6
         idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, product) # SNAP v7
     elif sensor == 'S2MSI':
         idepixParameters.put("computeCloudBufferForCloudAmbiguous", 'true')
@@ -987,7 +988,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
 
         # Core AC
         print("Inversion")
-        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2 = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion)
+        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion)
         print("")
 
         # Set absorption band to NaN
@@ -995,12 +996,13 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
         rho_ag_mod[:,iband_abs] = np.NaN
         rho_rc[:,iband_abs] = np.NaN
         rho_w[:,iband_abs] = np.NaN
+        unc_rhow[:,iband_abs] = np.NaN
 
         # Apply normalisation
         print("Normalize spectra")
         angle0 = np.zeros(npix)
         rho_wn = np.zeros((npix, nbands)) + np.nan
-        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion)
+        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion)/rho_wmod[:,iband_forwardNN] * rho_w[:,iband_forwardNN]
     else:
         rho_w = np.zeros((npix, nbands)) + np.nan
         rho_wn = np.zeros((npix, nbands)) + np.nan
@@ -1010,11 +1012,9 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
         rho_ag_mod = np.zeros((npix, nbands)) + np.nan
         l2flags = np.zeros(npix) + np.nan
         chi2 = np.zeros(npix) + np.nan
+        unc_rhow = np.zeros((npix, nbands)) + np.nan
     
     #l2flags[np.array(oorFlagArray==1)] += 2**1 TODO flags?
-
-    # TODO uncertainties
-    # unc_rhow =
 
     ###
     # Writing a product
@@ -1123,19 +1123,30 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     nbands = len(bands_sat)
     n_pix  = np.count_nonzero(valid) # Apply NM only on valid pixel
     range_pix = np.arange(n_pix)
+    range_keep = np.tile(range_pix,(n_vertex-1,1)).transpose()
 
     iter_max = 5
     n_iter_NM_max = 60
     n_iter_NM = 0
     simplex = np.ndarray((n_pix, n_vertex, n_dim))
-    chi2 = np.ndarray((n_pix, n_vertex))
+    chi2_NM = np.ndarray((n_pix, n_vertex))
+    rho_w_NM = np.ndarray((n_pix, n_vertex, nbands))
+    rho_wmod_NM = np.ndarray((n_pix, n_vertex, nbands))
+    rho_ag_NM = np.ndarray((n_pix, n_vertex, nbands))
+    rho_ag_mod_NM = np.ndarray((n_pix, n_vertex, nbands))
+
+    n_reflection = np.zeros(n_pix)
+    n_expansion = np.zeros(n_pix)
+    n_contraction =np.zeros(n_pix)
+    n_reduction = np.zeros(n_pix)
+    i_reduction = np.zeros(n_pix, dtype=bool)
 
     # Start NM - Define first vertice xbest of the simplex
     log_iop = apply_backwardNN(rho_rc[:,iband_backwardNN], sza, oza, nn_raa, valid, NNversion)
     xbest = log_iop[valid,0:niop]
 
     while n_iter_NM < n_iter_NM_max:
-        print "#### Iter NM %d"%n_iter_NM
+        print("#### Iter NM %d"%n_iter_NM)
 
         # Update first simplex during overall NM iteration
         if n_iter_NM >=0:
@@ -1148,63 +1159,62 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
         # Evaluate function at first simplex
         for iv in range(n_vertex):
             #simplex[:,iv] = check_and_constrain_iop(simplex[:,iv], inputRange_forward)
-            chi2[:,iv], tmp, tmp, tmp, tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+            chi2_NM[:,iv], rho_w_NM[:,iv], rho_wmod_NM[:,iv], rho_ag_NM[:,iv], rho_ag_mod_NM[:,iv] = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
                 
         # Loop
         n_iter = 0
-        n_reflection = np.zeros(n_pix)
-        n_expansion = np.zeros(n_pix)
-        n_contraction =np.zeros(n_pix)
-        n_reduction = np.zeros(n_pix)
-        i_reduction = np.zeros(n_pix, dtype=bool)
-        diam = np.zeros(n_pix)
-        yr = np.zeros(n_pix)
-        ynew = np.zeros(n_pix)
+        n_reflection[:] = 0
+        n_expansion[:] = 0
+        n_contraction[:] = 0
+        n_reduction[:] = 0
         while n_iter<iter_max:
 
-            print "Iter %d"%n_iter
+            print("Iter %d"%n_iter)
             # Init action
             i_reduction[:] = False
 
             # Compute size of simplex (size of diam is n_pix)
             diam = diameter(simplex)
             if max(diam)< 1E-4:
-                print "Diameter=%f -- break"%max(diam)
+                print("Diameter=%f -- break"%max(diam))
                 break
 
             # Order vertices
-            order = np.argsort(chi2, axis=1)
+            order = np.argsort(chi2_NM, axis=1)
             ibest = order[:,0] # best
             isecond = order[:,-2] # second to worse
             iworse = order[:,-1] # worse
             xbest = simplex[range_pix,ibest]
             xworse = simplex[range_pix,iworse]
             xnew = simplex[range_pix,ibest] # Values re-evaluated for expansion or contraction, but need realistic dummy for other
-            ybest = chi2[range_pix,ibest]
-            ysecond = chi2[range_pix,isecond]
-            yworse = chi2[range_pix,iworse]
+            ybest = chi2_NM[range_pix,ibest]
+            ysecond = chi2_NM[range_pix,isecond]
+            yworse = chi2_NM[range_pix,iworse]
 
             # Check convergence
             if max(ybest) < 1.E-6:
-                print "Max(ybest)=%f -- break"%max(ybest)
+                print("Max(ybest)=%f -- break"%max(ybest))
                 break
             
             # Compute centroid
             ikeep = order[:,:-1]
-            range_keep = np.tile(range_pix,(n_vertex-1,1)).transpose()
             xc = simplex[range_keep,ikeep].mean(1)
 
             # Reflect worse vertex
             xr = xc + (xc-xworse)
             # Evaluate reflection
             #xr = check_and_constrain_iop(xr, inputRange_forward)
-            yr, tmp, tmp, tmp, tmp = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+            yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
 
             # Replace vertex
             i_reflection = (ybest <= yr) & (yr <  ysecond)
             if i_reflection.any():
                 simplex[range_pix[i_reflection],iworse[i_reflection]] = xr[i_reflection]
-                chi2[range_pix[i_reflection],iworse[i_reflection]] = yr[i_reflection]
+                chi2_NM[range_pix[i_reflection],iworse[i_reflection]] = yr[i_reflection]
+                rho_w_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_w_r[i_reflection]
+                rho_wmod_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_wmod_r[i_reflection]
+                rho_ag_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_ag_r[i_reflection]
+                rho_ag_mod_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_ag_mod_r[i_reflection]
                 n_reflection[i_reflection] += 1
 
             # Dectect expansion
@@ -1228,18 +1238,26 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
             # Evaluate new vertex for expansion or contraction
             if i_expansion.any() or i_contraction.any():
                 #xnew = check_and_constrain_iop(xnew, inputRange_forward)
-                ynew, tmp, tmp, tmp, tmp = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+                ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
 
             # Apply expansion
             if i_expansion.any():
                 i_e = i_expansion & (ynew <= yr)
                 if i_e.any():
                     simplex[range_pix[i_e],iworse[i_e]] = xnew[i_e]
-                    chi2[range_pix[i_e],iworse[i_e]] = ynew[i_e]
+                    chi2_NM[range_pix[i_e],iworse[i_e]] = ynew[i_e]
+                    rho_w_NM[range_pix[i_e],iworse[i_e]] = rho_w_new[i_e]
+                    rho_wmod_NM[range_pix[i_e],iworse[i_e]] = rho_wmod_new[i_e]
+                    rho_ag_NM[range_pix[i_e],iworse[i_e]] = rho_ag_new[i_e]
+                    rho_ag_mod_NM[range_pix[i_e],iworse[i_e]] = rho_ag_mod_new[i_e]
                 i_e = i_expansion & (ynew > yr)
                 if i_e.any():
                     simplex[range_pix[i_e],iworse[i_e]] = xr[i_e]
-                    chi2[range_pix[i_e],iworse[i_e]] = yr[i_e]
+                    chi2_NM[range_pix[i_e],iworse[i_e]] = yr[i_e]
+                    rho_w_NM[range_pix[i_e],iworse[i_e]] = rho_w_r[i_e]
+                    rho_wmod_NM[range_pix[i_e],iworse[i_e]] = rho_wmod_r[i_e]
+                    rho_ag_NM[range_pix[i_e],iworse[i_e]] = rho_ag_r[i_e]
+                    rho_ag_mod_NM[range_pix[i_e],iworse[i_e]] = rho_ag_mod_r[i_e]
                 n_expansion[i_expansion] += 1 
 
             # Apply contraction
@@ -1248,7 +1266,11 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                     ii = i_ce & (ynew <= yr)
                     if ii.any():
                         simplex[range_pix[ii],iworse[ii]] = xnew[ii]
-                        chi2[range_pix[ii],iworse[ii]] = ynew[ii]
+                        chi2_NM[range_pix[ii],iworse[ii]] = ynew[ii]
+                        rho_w_NM[range_pix[ii],iworse[ii]] = rho_w_new[ii]
+                        rho_wmod_NM[range_pix[ii],iworse[ii]] = rho_wmod_new[ii]
+                        rho_ag_NM[range_pix[ii],iworse[ii]] = rho_ag_new[ii]
+                        rho_ag_mod_NM[range_pix[ii],iworse[ii]] = rho_ag_mod_new[ii]
                         n_contraction[ii] += 1
                     ii = i_ce & (ynew > yr)
                     if ii.any():
@@ -1257,7 +1279,11 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                     ii = i_ci & (ynew < yworse)
                     if ii.any():
                         simplex[range_pix[ii],iworse[ii]] = xnew[ii]
-                        chi2[range_pix[ii],iworse[ii]] = ynew[ii]
+                        chi2_NM[range_pix[ii],iworse[ii]] = ynew[ii]
+                        rho_w_NM[range_pix[ii],iworse[ii]] = rho_w_new[ii]
+                        rho_wmod_NM[range_pix[ii],iworse[ii]] = rho_wmod_new[ii]
+                        rho_ag_NM[range_pix[ii],iworse[ii]] = rho_ag_new[ii]
+                        rho_ag_mod_NM[range_pix[ii],iworse[ii]] = rho_ag_mod_new[ii]
                         n_contraction[ii] += 1
                     ii = i_ci & (ynew >= yworse)
                     if ii.any():
@@ -1271,47 +1297,93 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                 # Evaluate reduction
                 for iv in range(n_vertex):
                     #simplex[i_reduction, iv] = check_and_constrain_iop(simplex[i_reduction, iv], inputRange_forward)
-                    y, tmp, tmp, tmp, tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
-                    chi2[range_pix[i_reduction], iv] = y[i_reduction] # Care y defined only for dopix=i_reduction
+                    y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+                    chi2_NM[range_pix[i_reduction], iv] = y[i_reduction] # Care y defined only for dopix=i_reduction
+                    rho_w_NM[range_pix[i_reduction], iv] = rho_w_tmp[i_reduction]
+                    rho_wmod_NM[range_pix[i_reduction], iv] = rho_wmod_tmp[i_reduction]
+                    rho_ag_NM[range_pix[i_reduction], iv] = rho_ag_tmp[i_reduction]
+                    rho_ag_mod_NM[range_pix[i_reduction], iv] = rho_ag_mod_tmp[i_reduction]
                 n_reduction[i_reduction] += 1
+
+
+            # Release some memory
+            del xworse, xnew, xc, xr
+            del yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r
+            del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
+            if i_reduction.any():
+                del y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp
 
             n_iter = n_iter + 1
 
         # End of algorithm
-        print "Niter=",n_iter
-        print "Reflection=",n_reflection[0:10], np.count_nonzero(n_reflection)
-        print "Expansion=",n_expansion[0:10], np.count_nonzero(n_expansion)
-        print "Contraction=",n_contraction[0:10],  np.count_nonzero(n_contraction)
-        print "Reduction=",n_reduction[0:10], np.count_nonzero(n_reduction)
-        print "Evaluation=",n_evaluation
+        print("Niter=",n_iter)
+        print("Reflection=",n_reflection[0:10], np.count_nonzero(n_reflection))
+        print("Expansion=",n_expansion[0:10], np.count_nonzero(n_expansion))
+        print("Contraction=",n_contraction[0:10],  np.count_nonzero(n_contraction))
+        print("Reduction=",n_reduction[0:10], np.count_nonzero(n_reduction))
+        print("Evaluation=",n_evaluation)
 
         # Identify best vertex
-        print "Identify best vertex"
-        order = np.argsort(chi2,axis=1)
+        print("Identify best vertex")
+        order = np.argsort(chi2_NM,axis=1)
         ibest = order[:,0] # best
         xbest = simplex[range_pix,ibest]
         #xbest = check_and_constrain_iop(xbest, inputRange_forward)
 
         n_iter_NM = n_iter_NM + 1
 
-    # Final evaluation at best vertex
-    print "Evaluate best vertex"
+    # End of iteration, copy best vertex on valid pixels
     n_pix_all = oza.shape[0]
     chi2 = np.zeros(n_pix_all) + np.NaN
     rho_w = np.zeros((n_pix_all, nbands)) + np.NaN
     rho_wmod = np.zeros((n_pix_all, nbands)) + np.NaN
     rho_ag = np.zeros((n_pix_all, nbands)) + np.NaN
     rho_ag_mod = np.zeros((n_pix_all, nbands)) + np.NaN
-    chi2[valid], rho_w[valid], rho_wmod[valid], rho_ag[valid], rho_ag_mod[valid] = evaluate_chi2(xbest, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
     log_iop = np.zeros((n_pix_all, niop)) + np.NaN
+
+    chi2[valid] = chi2_NM[range_pix,ibest]
+    rho_w[valid] = rho_w_NM[range_pix,ibest]
+    rho_wmod[valid] = rho_wmod_NM[range_pix,ibest]
+    rho_ag[valid] = rho_ag_NM[range_pix,ibest]
+    rho_ag_mod[valid] = rho_ag_mod_NM[range_pix,ibest]
     log_iop[valid] = xbest
+
+    # Compute uncertainty on valid pixels, all bands
+    print("Compute uncertainty")
+    nband_chi2 = len(iband_chi2)
+    # Compute Jacobian J = d rhow_mod/ d xw from simplex evaluation
+    DX = np.zeros((n_pix, n_vertex - 1, n_dim))
+    Drho_wmod = np.zeros((n_pix, n_vertex - 1, nbands))
+    for v in range(1,n_vertex):
+        DX[:,v-1] = simplex[range_pix, order[:,v]] - simplex[range_pix, order[:,0]]
+        Drho_wmod[:,v-1] = rho_wmod_NM[range_pix, order[:,v]] - rho_wmod_NM[range_pix, order[:,0]]
+    DXinv = np.linalg.inv(DX)
+    J = np.zeros((n_pix, nband_chi2, niop))
+    for k,ik in enumerate(iband_chi2):
+        J[:,k] = np.einsum('...ij,...j->...i', DXinv, Drho_wmod[:,:,ik]) 
+    # Compute d rhorc_mod / d xw
+    Matm = np.einsum('...ik,...kj->...ij', Aatm[valid], Aatm_inv[valid])
+    TJ = np.einsum('...i,...ij->...ij', td[valid][:, iband_chi2], J)
+    id_all = np.tile(np.identity(nband_chi2), (n_pix,1)).reshape(n_pix,nband_chi2,nband_chi2)
+    drho_rcmod_dxw =  np.einsum('...ik,...kj->...ij', id_all - Matm[:,iband_chi2,:], TJ)
+    # Compute variance-covariance matrix C_xw
+    C_xw = np.linalg.inv(np.matmul(drho_rcmod_dxw.transpose(0,2,1),drho_rcmod_dxw))
+    C_xw = np.einsum('i,ijk->ijk', chi2[valid], C_xw) # scaling with reduced chi2 for non-weighted minimization
+    # Compute d rhow / d xw
+    TinvMatm = np.einsum('...i,...ij->...ij', 1./td[valid], Matm)
+    d_rhow_dxw = np.matmul(TinvMatm, TJ)
+    # Compute variance-covariance matrix C_rhow
+    C_rhow = np.matmul(d_rhow_dxw, np.matmul(C_xw, d_rhow_dxw.transpose(0,2,1)))
+    # Return root square diagonal term
+    unc_rhow = np.zeros((n_pix_all, nbands)) + np.NaN
+    unc_rhow[valid] = np.sqrt(np.diagonal(C_rhow, axis1=1, axis2=2))
 
     l2flags = np.zeros(n_pix_all)
     # TODO define success = 
     #if not success:
     #    l2flags[ipix] += 2 ** 2
  
-    return rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2
+    return rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow
 
 def diameter(simplex):
 
@@ -1368,8 +1440,8 @@ def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza
     chi2 = np.sum((td[valid][index][:, iband_chi2]*(rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2]))**2, axis=1)
     #chi2 = np.sum((rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2])**2, axis=1)
     #chi2 = np.sum(((rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2])/rho_wmod[:,iband_chi2])**2, axis=1)
-    # Normalise chi2 to number of degree of freedom
-    #chi2 /= (len(iband_chi2) - vertices.shape[1])
+    # Normalise chi2 to number of degree of freedom (reduced chi-square)
+    chi2 /= (len(iband_chi2) - vertices.shape[1])
 
     return chi2, rho_w, rho_wmod, rho_ag, rho_ag_mod
 
