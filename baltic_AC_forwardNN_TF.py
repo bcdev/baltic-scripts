@@ -53,11 +53,6 @@ import luts_olci
 import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
-# POLYMER
-# sys.path.append('/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.11')
-# from polymer.water import ParkRuddick
-# path_aux_common = '/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.1/auxdata/common/'
-
 # Set locale for proper time reading with datetime
 # locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
@@ -318,10 +313,12 @@ def run_IdePix_processor(product, sensor):
     # invoke IdePix.
     # define valid pixel expression.
     idepixParameters = HashMap()
-    # idepixParameters.put("computeCloudBuffer", 'true')
-    idepixParameters.put("computeCloudBuffer", 'false')
-    idepixParameters.put("cloudBufferWidth", '2')
-    idepixParameters.put("computeCloudShadow", 'false')
+    if product.getProductType() == 'CSV':
+        idepixParameters.put("computeCloudBuffer", 'false')
+        idepixParameters.put("computeCloudShadow", 'false')
+    else:
+        idepixParameters.put("computeCloudBuffer", 'true')
+        idepixParameters.put("cloudBufferWidth", '2')
 
     idepixProducts = HashMap()
     idepixProducts.put("l1bProduct", product)
@@ -333,7 +330,7 @@ def run_IdePix_processor(product, sensor):
         idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, idepixProducts) # SNAP v7
     elif sensor == 'S2MSI':
         idepixParameters.put("computeCloudBufferForCloudAmbiguous", 'true')
-        idepix_product = GPF.createProduct("Idepix.S2", idepixParameters, product) # SNAP v7
+        idepix_product = GPF.createProduct("Idepix.S2", idepixParameters, idepixProducts) # SNAP v7
 
     return idepix_product
 
@@ -893,7 +890,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
             sourceData = np.zeros((height, width), dtype='uint32')
             band.setRasterData(ProductData.createInstance(sourceData))
 
-        idepixProduct = run_IdePix_processor(product, sensor) #cloud buffer + cloud shadow switched off!!
+        idepixProduct = run_IdePix_processor(product, sensor)
 
         validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor, subset=subset)
         print('Idepix valid', np.sum(validIdepix))
