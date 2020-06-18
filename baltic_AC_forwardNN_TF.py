@@ -1142,8 +1142,8 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     range_pix = np.arange(n_pix)
     range_keep = np.tile(range_pix,(n_vertex-1,1)).transpose()
 
-    iter_max = 5
-    n_iter_NM_max = 60
+    iter_max = 10
+    n_iter_NM_max = 30
     n_iter_NM = 0
     simplex = np.ndarray((n_pix, n_vertex, n_dim))
     chi2_NM = np.ndarray((n_pix, n_vertex))
