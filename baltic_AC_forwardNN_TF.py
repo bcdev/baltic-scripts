@@ -15,8 +15,8 @@ import glob
 import tensorflow as tf
 
 # snappy import
-sys.path.append('/home/cmazeran/.snap/snap-python')
-#sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+# sys.path.append('/home/cmazeran/.snap/snap-python')
+sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
@@ -54,13 +54,12 @@ import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
 # POLYMER
-sys.path.append('/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.11')
-from polymer.water import ParkRuddick
-path_aux_common = '/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.1/auxdata/common/'
+# sys.path.append('/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.11')
+# from polymer.water import ParkRuddick
+# path_aux_common = '/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.1/auxdata/common/'
 
 # Set locale for proper time reading with datetime
-locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
-
+# locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Define NNs as global variables
 def read_NNs(sensor, NNversion, NNIOPversion):
@@ -116,7 +115,7 @@ def read_NNs(sensor, NNversion, NNIOPversion):
             'oza': (0.49999997, 1.0),
             'sza': (0.25881895, 1.0)
             }
-        
+
 def open_NN(nnFilePath, NNversion):
     global session
 
@@ -319,14 +318,19 @@ def run_IdePix_processor(product, sensor):
     # invoke IdePix.
     # define valid pixel expression.
     idepixParameters = HashMap()
-    idepixParameters.put("computeCloudBuffer", 'true')
+    # idepixParameters.put("computeCloudBuffer", 'true')
+    idepixParameters.put("computeCloudBuffer", 'false')
     idepixParameters.put("cloudBufferWidth", '2')
+    idepixParameters.put("computeCloudShadow", 'false')
+
+    idepixProducts = HashMap()
+    idepixProducts.put("l1bProduct", product)
 
     idepix_product = None
 
     if sensor == 'OLCI':
         #idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product) # SNAP v6
-        idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, product) # SNAP v7
+        idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, idepixProducts) # SNAP v7
     elif sensor == 'S2MSI':
         idepixParameters.put("computeCloudBufferForCloudAmbiguous", 'true')
         idepix_product = GPF.createProduct("Idepix.S2", idepixParameters, product) # SNAP v7
@@ -439,7 +443,7 @@ def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, NNver
         return apply_forwardNN_net(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
     elif NNversion == 'TF':
         return apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
-    
+
 def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNversion, NNIOP=False):
     if NNversion == 'v2' or NNversion == 'v3':
         return apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP)
@@ -584,7 +588,7 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNI
     valid ranges can be found at the beginning of the .net-file.
 
     NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
-    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865 
+    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
     """
 
     # Initialise output
@@ -603,7 +607,7 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNI
     inputNN = np.zeros(5+rhow.shape[1])
     inputNN[3] = T
     inputNN[4] = S
-    
+
     for i in range(rhow.shape[0]):
         if valid2[i]:
             inputNN[0] = sun_zenith[i]
@@ -851,6 +855,9 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
     # Initialising a product for Reading with snappy
     product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
 
+    if sensor=='OLCI' and product.getProductType()=='CSV':
+        product.setProductType('OL_1_')
+
     # Resampling S2MSI to 60m
     if sensor == "S2MSI" and product.isMultiSize():
         print( "Resample MSI data")
@@ -879,9 +886,19 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
     print("%d valid pixels on %d"%(np.sum(valid), len(valid)))
 
     if add_Idepix_Flags:
-        idepixProduct = run_IdePix_processor(product, sensor)
+        if product.getBand('quality_flags') is None: #Idepix needs a band of this name to run. L1-flags are evaluated st a different step, so values can be zero here.
+            band = product.addBand('quality_flags', ProductData.TYPE_INT32)
+            band.setNoDataValue(np.nan)
+            band.setNoDataValueUsed(True)
+            sourceData = np.zeros((height, width), dtype='uint32')
+            band.setRasterData(ProductData.createInstance(sourceData))
+
+        idepixProduct = run_IdePix_processor(product, sensor) #cloud buffer + cloud shadow switched off!!
+
         validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor, subset=subset)
+        print('Idepix valid', np.sum(validIdepix))
         valid = np.logical_and(valid, validIdepix)
+        print('total valid', np.sum(valid))
     else:
         idepixProduct=None
 
@@ -1013,7 +1030,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
         l2flags = np.zeros(npix) + np.nan
         chi2 = np.zeros(npix) + np.nan
         unc_rhow = np.zeros((npix, nbands)) + np.nan
-    
+
     #l2flags[np.array(oorFlagArray==1)] += 2**1 TODO flags?
 
     ###
@@ -1332,7 +1349,8 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
 
         n_iter_NM = n_iter_NM + 1
 
-    # End of iteration, copy best vertex on valid pixels
+    # Final evaluation at best vertex
+    print( "Evaluate best vertex")
     n_pix_all = oza.shape[0]
     chi2 = np.zeros(n_pix_all) + np.NaN
     rho_w = np.zeros((n_pix_all, nbands)) + np.NaN
@@ -1360,7 +1378,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     DXinv = np.linalg.inv(DX)
     J = np.zeros((n_pix, nband_chi2, niop))
     for k,ik in enumerate(iband_chi2):
-        J[:,k] = np.einsum('...ij,...j->...i', DXinv, Drho_wmod[:,:,ik]) 
+        J[:,k] = np.einsum('...ij,...j->...i', DXinv, Drho_wmod[:,:,ik])
     # Compute d rhorc_mod / d xw
     Matm = np.einsum('...ik,...kj->...ij', Aatm[valid], Aatm_inv[valid])
     TJ = np.einsum('...i,...ij->...ij', td[valid][:, iband_chi2], J)
