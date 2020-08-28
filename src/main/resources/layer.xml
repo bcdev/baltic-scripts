@@ -5,15 +5,15 @@
     <folder name="Actions">
 
         <folder name="Operators">
-            <file name="PyO2corrOpAction.instance">
+            <file name="BalticOpAction.instance">
                 <attr name="instanceCreate"
                       methodvalue="org.openide.awt.Actions.alwaysEnabled"/>
                 <attr name="delegate" methodvalue="org.esa.snap.core.gpf.ui.DefaultOperatorAction.create"/>
-                <attr name="operatorName" stringvalue="baltic_ac_op"/>
+                <attr name="operatorName" stringvalue="baltic_op"/>
                 <attr name="displayName" stringvalue="Baltic+ Atmospheric Correction"/>
                 <attr name="dialogTitle" stringvalue="Baltic+ Atmospheric Correction"/>
                 <attr name="helpId" stringvalue="pyBalticacDoc"/>  <!--The helpId if help contents is provided-->
-                <attr name="targetProductNameSuffix" stringvalue="_balticac"/>
+                <attr name="targetProductNameSuffix" stringvalue="_baltic"/>
                 <attr name="ShortDescription" stringvalue="GPF operator for Baltic+ AC."/>
             </file>
         </folder>
@@ -22,10 +22,10 @@
     <folder name="Menu">
         <folder name="Optical">
             <folder name="Preprocessing">
-                <file name="PyO2corrOpAction.shadow">
+                <file name="BalticOpAction.shadow">
                     <attr name="originalFile"
-                          stringvalue="Actions/Operators/BalticAcOpAction.instance"/>
-                    <attr name="position" intvalue="13000"/>
+                          stringvalue="Actions/Operators/BalticOpAction.instance"/>
+                    <attr name="position" intvalue="1"/>
                 </file>
             </folder>
         </folder>
@@ -33,8 +33,8 @@
 
     <folder name="Services">
         <folder name="JavaHelp">
-            <file name="org-esa-snap-balticac-helpset.xml" url="helpset.xml">
-                <attr name="position" intvalue="4600"/>
+            <file name="org-esa-snap-baltic-helpset.xml" url="helpset.xml">
+                <attr name="position" intvalue="2"/>
             </file>
         </folder>
     </folder>

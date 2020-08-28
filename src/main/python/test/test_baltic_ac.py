@@ -3,7 +3,7 @@ import sys
 import unittest
 from sys import platform
 
-from src.main.python import baltic_ac_algorithm
+import baltic_ac_algorithm
 
 BALTIC_AC_HOME = os.path.dirname(os.path.abspath(__file__))
 

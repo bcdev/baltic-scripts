@@ -30,7 +30,7 @@ class TestEnv(unittest.TestCase):
 
     def test_balticac_sources_available(self):
         import snappy
-        from src.main.python import baltic_ac_algorithm
+        import baltic_ac_algorithm
         self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
         print('baltic_ac_algo import ok...')
 

@@ -20,7 +20,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.esa.snap</groupId>
-    <artifactId>snap-baltic-ac</artifactId>
+    <artifactId>snap-baltic</artifactId>
     <version>0.1-SNAPSHOT</version>
 
     <name>SNAP Baltic+ Atmospheric Correction (Python)</name>
@@ -29,25 +29,30 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <snap.version>7.0.0</snap.version>
+        <snap.version>7.0.4</snap.version>
     </properties>
 
     <dependencies>
-        <dependency>
-            <groupId>org.esa.snap</groupId>
-            <artifactId>snap-rcp</artifactId>
-            <version>${snap.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.esa.snap</groupId>
-            <artifactId>snap-python</artifactId>
-            <version>${snap.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.esa.snap</groupId>
-            <artifactId>snap-core</artifactId>
-            <version>${snap.version}</version>
-        </dependency>
+        <!--<dependency>-->
+            <!--<groupId>org.esa.snap</groupId>-->
+            <!--<artifactId>snap-rcp</artifactId>-->
+            <!--<version>${snap.version}</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+            <!--<groupId>org.esa.snap</groupId>-->
+            <!--<artifactId>snap-python</artifactId>-->
+            <!--<version>${snap.version}</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+            <!--<groupId>org.esa.snap</groupId>-->
+            <!--<artifactId>snap-core</artifactId>-->
+            <!--<version>${snap.version}</version>-->
+        <!--</dependency>-->
+        <!--<dependency>-->
+            <!--<groupId>org.esa.snap</groupId>-->
+            <!--<artifactId>snap-gpf</artifactId>-->
+            <!--<version>${snap.version}</version>-->
+        <!--</dependency>-->
     </dependencies>
 
     <build>
