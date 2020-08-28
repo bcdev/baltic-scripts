@@ -1,0 +1,11 @@
+# In order to publish the python operators in this plugin module to SNAP, they need to be listed in this file. On each
+# line an operator class is specified by its fully qualified name.
+# A fully specified name includes the Python package path and the class name both separated by dot characters ('.').
+# For example:
+#
+# cloud_mask.CloudMaskOp
+# water.mci.MciOp
+# land.ndvi.NdviOp
+# land_ops.FaparOp
+#
+baltic_ac_op.BalticAcOp

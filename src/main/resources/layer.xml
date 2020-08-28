@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE filesystem PUBLIC "-//NetBeans//DTD Filesystem 1.2//EN" "http://www.netbeans.org/dtds/filesystem-1_2.dtd">
+<filesystem>
+
+    <folder name="Actions">
+
+        <folder name="Operators">
+            <file name="PyO2corrOpAction.instance">
+                <attr name="instanceCreate"
+                      methodvalue="org.openide.awt.Actions.alwaysEnabled"/>
+                <attr name="delegate" methodvalue="org.esa.snap.core.gpf.ui.DefaultOperatorAction.create"/>
+                <attr name="operatorName" stringvalue="baltic_ac_op"/>
+                <attr name="displayName" stringvalue="Baltic+ Atmospheric Correction"/>
+                <attr name="dialogTitle" stringvalue="Baltic+ Atmospheric Correction"/>
+                <attr name="helpId" stringvalue="pyBalticacDoc"/>  <!--The helpId if help contents is provided-->
+                <attr name="targetProductNameSuffix" stringvalue="_balticac"/>
+                <attr name="ShortDescription" stringvalue="GPF operator for Baltic+ AC."/>
+            </file>
+        </folder>
+    </folder>
+
+    <folder name="Menu">
+        <folder name="Optical">
+            <folder name="Preprocessing">
+                <file name="PyO2corrOpAction.shadow">
+                    <attr name="originalFile"
+                          stringvalue="Actions/Operators/BalticAcOpAction.instance"/>
+                    <attr name="position" intvalue="13000"/>
+                </file>
+            </folder>
+        </folder>
+    </folder>
+
+    <folder name="Services">
+        <folder name="JavaHelp">
+            <file name="org-esa-snap-balticac-helpset.xml" url="helpset.xml">
+                <attr name="position" intvalue="4600"/>
+            </file>
+        </folder>
+    </folder>
+
+</filesystem>
