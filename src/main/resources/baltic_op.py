@@ -136,11 +136,3 @@ class BalticOp:
             if not band:
                 raise RuntimeError('Product has no band or tpg with name', band_name)
         return band
-
-    def intern_read(self, bnd, rect, typ=np.float32, stride=(1, 1)):
-        out = np.empty(rect.width * rect.height, typ)
-        bnd.readPixels(rect.x, rect.y, rect.width, rect.height, out)
-        out.shape = (rect.height, rect.width)
-        out = out[::stride[0], ::stride[1]] * 1.
-
-        return out
