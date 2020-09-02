@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 
 from baltic_AC_forwardNN import baltic_AC_forwardNN
 

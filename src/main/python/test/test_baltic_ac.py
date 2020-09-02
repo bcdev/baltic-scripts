@@ -2,11 +2,10 @@ import os
 import sys
 import unittest
 from sys import platform
-
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import baltic_ac_algorithm
 
 BALTIC_AC_HOME = os.path.dirname(os.path.abspath(__file__))
-
 
 # noinspection PyUnresolvedReferences
 class TestBalticAc(unittest.TestCase):
@@ -18,7 +17,6 @@ class TestBalticAc(unittest.TestCase):
 
         sys.path.append(resource_root)
         sys.path.append(BALTIC_AC_HOME)
-
         self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
 
     def test_balticac(self):

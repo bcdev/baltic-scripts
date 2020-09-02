@@ -2,13 +2,14 @@ import os
 import platform
 import sys
 import tempfile
-
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import numpy as np
 import snappy
 
 from snappy import ProductData
 
 import baltic_ac_algorithm
+from baltic_AC_forwardNN_TF import baltic_AC
 
 
 class BalticOp:

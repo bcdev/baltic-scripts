@@ -57,7 +57,7 @@ from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPosition
 sys.path.append('/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.11')
 from polymer.water import ParkRuddick
 path_aux_common = '/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.1/auxdata/common/'
-
+#path_aux_common = 'E:\work\projects\\baltic-scripts\\breadboard\\auxdata'
 # Set locale for proper time reading with datetime
 locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 

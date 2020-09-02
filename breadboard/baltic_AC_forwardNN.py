@@ -15,12 +15,13 @@ import time
 import glob
 
 # snappy import
-sys.path.append('/home/cmazeran/.snap/snap-python')
+#sys.path.append('/home/cmazeran/.snap/snap-python')
 #sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
-from snappy import ProductDataUTC
+#from snappy import ProductDataUTC
 from snappy import ProductIO
 from snappy import ProductUtils
 from snappy import ProgressMonitor

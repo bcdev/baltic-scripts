@@ -4,7 +4,7 @@ import sys
 import unittest
 
 from sys import platform
-
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 
 # noinspection PyUnresolvedReferences
 class TestEnv(unittest.TestCase):
