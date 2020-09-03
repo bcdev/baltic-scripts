@@ -621,6 +621,159 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNI
 
     return log_iop
 
+def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
+                              copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
+                              add_Idepix_Flags=False, idepixProduct=None, add_L2Flags=False, L2FlagArray=None,
+                              add_Geometry=False, subset=None):
+    # Initialise the output product
+    File = jpy.get_type('java.io.File')
+    width = product.getSceneRasterWidth()
+    height = product.getSceneRasterHeight()
+    bandShape = (height, width)
+
+    if subset is None:
+        height_subset = height
+        width_subset = width
+        sline, eline, scol, ecol = 0, height-1, 0, width -1
+    else:
+        sline,eline,scol,ecol = subset
+        height_subset = eline - sline + 1
+        width_subset = ecol - scol + 1
+    bandShape_subset = (height_subset, width_subset)
+
+    dirname = os.path.dirname(baltic__product_path)
+    outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
+    if outputProductFormat == "BEAM-DIMAP":
+        baltic__product_path = os.path.join(dirname, outname + addname +'.dim')
+    elif outputProductFormat == 'CSV':
+        baltic__product_path = os.path.join(dirname, outname + addname +'.csv')
+
+    balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
+    #balticPACProduct.setFileLocation(File(baltic__product_path))
+
+    ProductUtils.copyGeoCoding(product, balticPACProduct)
+
+    # Define total number of bands (TOA)
+    if (sensor == 'OLCI'):
+        nbands = 21
+    elif (sensor == 'S2MSI'):
+        nbands = 13
+
+    for key in spectral_dict.keys():
+        data = spectral_dict[key].get('data')
+        if not data is None:
+            nbands_key = data.shape[-1]
+            if outputProductFormat == 'BEAM-DIMAP':
+                if sensor == 'OLCI':
+                    bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+                elif sensor == 'S2MSI':
+                    bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
+                    bsources.append(product.getBand('B8A'))
+                    [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
+
+            sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
+            for i in range(nbands_key):
+                brtoa_name = key + "_" + str(i + 1)
+                # print(brtoa_name)
+                band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
+                if outputProductFormat == 'BEAM-DIMAP':
+                    ProductUtils.copySpectralBandProperties(bsources[i], band)
+                band.setNoDataValue(np.nan)
+                band.setNoDataValueUsed(True)
+
+                sourceData[sline:eline+1,scol:ecol+1] = data[:, i].reshape(bandShape_subset)
+                band.setRasterData(ProductData.createInstance(sourceData))
+
+
+    # Create empty bands for scalar fields
+    if not scalar_dict is None:
+        sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
+        for key in scalar_dict.keys():
+            singleBand = balticPACProduct.addBand(key, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+            data = scalar_dict[key].get('data')
+            if not data is None:
+                sourceData[sline:eline+1,scol:ecol+1] = data.reshape(bandShape_subset)
+                singleBand.setRasterData(ProductData.createInstance(sourceData))
+
+    if copyOriginalProduct:
+        originalBands = product.getBandNames()
+        balticBands = balticPACProduct.getBandNames()
+        for bb in balticBands:
+            originalBands = [ob for ob in originalBands if ob != bb]
+        for ob in originalBands:
+            singleBand = balticPACProduct.addBand(ob, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+
+            data = get_band_or_tiePointGrid(product,ob)
+            sourceData = np.array(data, dtype='float64').reshape(bandShape)
+            singleBand.setRasterData(ProductData.createInstance(sourceData))
+
+    if add_Idepix_Flags:
+        flagBand = balticPACProduct.addBand('pixel_classif_flags', ProductData.TYPE_INT32)
+        flagBand.setDescription('Idepix flag information')
+        flagBand.setNoDataValue(np.nan)
+        flagBand.setNoDataValueUsed(True)
+
+        data = get_band_or_tiePointGrid(idepixProduct, 'pixel_classif_flags')
+        sourceData = np.array(data, dtype='int32').reshape(bandShape)
+        flagBand.setRasterData(ProductData.createInstance(sourceData))
+
+        idepixFlagCoding = FlagCoding('pixel_classif_flags')
+        flagNames = list(idepixProduct.getAllFlagNames())
+        print(list(flagNames))
+        IDflags = 'pixel_classif_flags'
+        flagNames = [fn[(len(IDflags)+1):] for fn in flagNames if IDflags in fn]
+        for i, fn in enumerate(flagNames):
+            idepixFlagCoding.addFlag(fn, 2**i, fn)
+        balticPACProduct.getFlagCodingGroup().add(idepixFlagCoding)
+        flagBand.setSampleCoding(idepixFlagCoding)
+
+    if add_L2Flags:
+        flagBand = balticPACProduct.addBand('baltic_L2_flags', ProductData.TYPE_INT32)
+        flagBand.setDescription('L2 flag information for the baltic+ AC')
+        flagBand.setNoDataValue(np.nan)
+        flagBand.setNoDataValueUsed(True)
+
+        sourceData = np.array(L2FlagArray, dtype='int32').reshape(bandShape)
+        flagBand.setRasterData(ProductData.createInstance(sourceData))
+
+        L2FlagCoding = FlagCoding('baltic_L2_flags')
+        flagNames = ['OOR_NN_IOP', 'OOR_NN_normalisation', 'NELDER_MEAD_FAIL']
+        flagDescription = ['input IOPs to forwardNN out of range. at least one IOP has been constrained.',
+                           'input rho_w to NormalisationNN out of range. at least one rho_w has been constrained.',
+                           'Nelder-Mead Optimisation failed.']
+        #IDflags = 'baltic_L2_flags'
+        #flagNames = [fn[(len(IDflags) + 1):] for fn in flagNames if IDflags in fn]
+        i = 0
+        for fn, dscr in zip(flagNames, flagDescription):
+            L2FlagCoding.addFlag(fn, 2 ** i, dscr)
+            i += 1
+        balticPACProduct.getFlagCodingGroup().add(L2FlagCoding)
+        flagBand.setSampleCoding(L2FlagCoding)
+
+    if add_Geometry and not copyOriginalProduct:
+        oaa, oza, saa, sza = angle_Reader(product, sensor, subset=subset)
+        if sensor == 'OLCI':
+            geomNames = ['OAA', 'OZA', 'SAA', 'SZA']
+        elif sensor == 'S2MSI':
+            geomNames = ['view_azimuth_mean', 'view_zenith_mean', 'sun_azimuth', 'sun_zenith']
+
+        dataList = [oaa, oza, saa, sza]
+
+        sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
+        for gn, data in zip(geomNames, dataList):
+            singleBand = balticPACProduct.addBand(gn, ProductData.TYPE_FLOAT64)
+            singleBand.setNoDataValue(np.nan)
+            singleBand.setNoDataValueUsed(True)
+
+            sourceData[sline:eline+1,scol:ecol+1] = data.reshape(bandShape_subset)
+            singleBand.setRasterData(ProductData.createInstance(sourceData))
+
+
+    return balticPACProduct
 
 def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
                              copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
@@ -1237,23 +1390,25 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
         for i, field in enumerate(iop_names):
             scalar_dict[field] = {'data': np.exp(log_iop2[:,i])}
 
-    # write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
-    #                          copyOriginalProduct, outputProductFormat, addName,
-    #                          add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
-    #                          add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
-    #                          add_Geometry=True,subset=subset)
 
-    write_BalticP_AC_Product_WRITER(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
+    targetProduct = final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
                              copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
                              add_Geometry=True)
 
-    product.closeProductReader()
+    #write_BalticP_AC_Product_WRITER(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
+    #                         copyOriginalProduct, outputProductFormat, addName,
+    #                        add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
+    #                         add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
+    #                         add_Geometry=True)
+
+    #product.closeProductReader()
 
     # Close TF session
     if session is not None:
         session.close()
+    return targetProduct
 
 def Rmod_MSA(wav, rho_ag, alpha, lambda_l, wav0=865):
     '''

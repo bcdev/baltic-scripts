@@ -29,7 +29,7 @@ class BalticOp:
         :return:
         """
         resource_root = os.path.dirname(__file__)
-        f = open(tempfile.gettempdir() + '/balticac.log', 'w')
+        f = open(tempfile.gettempdir() + '/baltic_.log', 'w')
 
         sys.path.append(resource_root)
 
@@ -44,6 +44,36 @@ class BalticOp:
         if not source_product:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
 
+        ######## Copy from breadboard
+        #######
+        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
+        fn = 1
+        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
+        sensor = "OLCI"
+        outputSpectral = {'rho_toa': 'rho_toa',
+                          'rho_w': 'rho_w',
+                          'rho_wmod': 'rho_wmod',
+                          'rho_wn': 'rho_wn'
+                          }
+        outputScalar = {'log_apig': 'log_iop[:,0]',
+            'log_adet': 'log_iop[:,1]',
+            'log_agelb': 'log_iop[:,2]',
+            'log_bpart': 'log_iop[:,3]',
+            'log_bwit': 'log_iop[:,4]'
+        }
+
+        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
+                  addName='_fwNNHL_50x40x40Noise_',
+                  NNversion='TF_n',
+                  outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
+                  add_Idepix_Flags=True,
+                  correction='HYGEOS',
+                  add_c2rccIOPs=False,
+                  outputProductFormat='BEAM-DIMAP')
+
+
+        #######
+        #######
         f.write("Start initialize: source product is " + source_product.getName() + '\n')
         print('Start initialize: source product is ' + source_product.getName() + '\n')
 
@@ -84,7 +114,7 @@ class BalticOp:
         snappy.ProductUtils.copyTiePointGrids(source_product, balticac_product)
         source_product.transferGeoCodingTo(balticac_product, None)
 
-        operator.setTargetProduct(balticac_product)
+        operator.setTargetProduct(targetProduct)
 
         self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
         self.baltic_ac_algo.run(None)
@@ -92,28 +122,34 @@ class BalticOp:
         f.write('end initialize.')
         f.close()
 
-    def compute(self, operator, target_tiles, target_rectangle):
-        """
-        GPF compute method
-        :param operator
-        :param target_tiles
-        :param target_rectangle
-        :return:
-        """
-        print('enter compute: rectangle = ', target_rectangle.toString())
-        # todo: implement and run algorithm...
+    def doExecute(self, pm):
+        ######## Copy from breadboard
+        #######
+        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
+        fn = 1
+        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
+        sensor = "OLCI"
+        outputSpectral = {'rho_toa': 'rho_toa',
+                          'rho_w': 'rho_w',
+                          'rho_wmod': 'rho_wmod',
+                          'rho_wn': 'rho_wn'
+                          }
+        outputScalar = {'log_apig': 'log_iop[:,0]',
+                        'log_adet': 'log_iop[:,1]',
+                        'log_agelb': 'log_iop[:,2]',
+                        'log_bpart': 'log_iop[:,3]',
+                        'log_bwit': 'log_iop[:,4]'
+                        }
 
-        # test: write one target band
-        src_rad0_tile = operator.getSourceTile(self.rad_bands[0], target_rectangle)
-        src_rad0_samples = src_rad0_tile.getSamplesFloat()
-        src_rad0_data = np.array(src_rad0_samples, dtype=np.float32)
-
-        target_test_data = np.empty(src_rad0_data.shape[0], dtype=np.float32)
-        for i in range(0, src_rad0_data.shape[0]):
-            target_test_data[i] = src_rad0_data[i] * 2.0
-
-        target_test_tile = target_tiles.get(self.test_band)
-        target_test_tile.setSamples(target_test_data)
+        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
+                                  addName='_fwNNHL_50x40x40Noise_',
+                                  NNversion='TF_n',
+                                  outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
+                                  add_Idepix_Flags=True,
+                                  correction='HYGEOS',
+                                  add_c2rccIOPs=False,
+                                  outputProductFormat='BEAM-DIMAP')
+        pass
 
     def dispose(self, operator):
         """
