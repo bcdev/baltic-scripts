@@ -39,15 +39,25 @@ class BalticOp:
         print('platform.system(): ' + platform.system() + '\n')
         print('sys.version_info(): ' + str(sys.version_info) + '\n')
 
-        # get L1b source product:
-        source_product = operator.getSourceProduct('l1b')
+        # get  source product:
+        #source_product = operator.getSourceProduct('l1b')
+        source_product = operator.getSourceProduct('source')
         if not source_product:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
+
+        #######parameters#########
+        sensor = operator.getParameter('sensor')
+        if sensor not in ['OLCI']:
+            raise RuntimeError('Baltic_OP supports only OLCI sensors')
+
+        outputFormat = operator.getParameter('outputFormat')
+        if outputFormat not in ['BEAM-DIMAP']:
+            raise RuntimeError('Currently Baltic_OP supports only BEAM-DIMAP')
 
         ######## Copy from breadboard
         #######
         inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        fn = 1
+        fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
         outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
         sensor = "OLCI"
         outputSpectral = {'rho_toa': 'rho_toa',
@@ -69,7 +79,7 @@ class BalticOp:
                   add_Idepix_Flags=True,
                   correction='HYGEOS',
                   add_c2rccIOPs=False,
-                  outputProductFormat='BEAM-DIMAP')
+                  outputProductFormat=outputFormat)
 
 
         #######
@@ -86,39 +96,26 @@ class BalticOp:
         print('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
 
         # get source bands:
-        self.sza_band = self.get_band(source_product, 'SZA')
-        self.oza_band = self.get_band(source_product, 'OZA')
-
-        self.rad_bands = []
-        self.lambda0_bands = []
-        self.fwhm_bands = []
-        self.solar_flux_bands = []
-        for b in range(1, 21):
-            self.rad_bands.append(self.get_band(source_product, 'Oa%02d' % b + '_radiance'))
-            self.lambda0_bands.append(self.get_band(source_product, 'lambda0_band_' + str(b)))
-            self.fwhm_bands.append(self.get_band(source_product, 'FWHM_band_' + str(b)))
-            self.solar_flux_bands.append(self.get_band(source_product, 'solar_flux_band_' + str(b)))
 
         # setup target product:
-        balticac_product = snappy.Product('pyBALTICAC', 'pyBALTICAC', width, height)
-        balticac_product.setDescription('Baltic+ AC product')
-        balticac_product.setStartTime(source_product.getStartTime())
-        balticac_product.setEndTime(source_product.getEndTime())
+        #balticac_product = snappy.Product('pyBALTICAC', 'pyBALTICAC', width, height)
+        targetProduct.setDescription('Baltic+ AC product')
+        targetProduct.setStartTime(source_product.getStartTime())
+        targetProduct.setEndTime(source_product.getEndTime())
 
         # setup target bands:
         # todo
-        # test: define one target band
-        self.test_band = balticac_product.addBand('test_band', ProductData.TYPE_FLOAT64)
-        self.test_band.setDescription('Test band: radiance0 * 2')
+        # test: define one target band.
+        # Roman: It's all done inside baltic_AC_forward
+        # self.test_band = balticac_product.addBand('test_band', ProductData.TYPE_FLOAT64)
+        # self.test_band.setDescription('Test band: radiance0 * 2')
 
-        snappy.ProductUtils.copyTiePointGrids(source_product, balticac_product)
-        source_product.transferGeoCodingTo(balticac_product, None)
+        #snappy.ProductUtils.copyTiePointGrids(source_product, balticac_product)
+        #source_product.transferGeoCodingTo(balticac_product, None)
+        #self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
+        #self.baltic_ac_algo.run(None)
 
         operator.setTargetProduct(targetProduct)
-
-        self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
-        self.baltic_ac_algo.run(None)
-
         f.write('end initialize.')
         f.close()
 
