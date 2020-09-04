@@ -37,3 +37,13 @@ def nlinear(x, yp, axes):
     return ndimage.map_coordinates(yp, coords, order=1)
 
 
+def scale_minmax(x, input_range, reverse=False):
+    if reverse:
+        for j in range(x.shape[1]):
+            diff = input_range[j, 1] - input_range[j, 0]
+            x[:, j] = x[:,j]*diff + input_range[j, 0]
+    else:
+        for j in range(x.shape[1]):
+            diff = input_range[j, 1] - input_range[j, 0]
+            x[:, j] = (x[:,j]- input_range[j, 0])/diff
+    return x
