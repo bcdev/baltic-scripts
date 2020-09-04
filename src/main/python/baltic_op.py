@@ -20,6 +20,7 @@ class BalticOp:
     """
 
     def __init__(self):
+        self.source_product = None
         pass
 
     def initialize(self, operator):
@@ -42,6 +43,8 @@ class BalticOp:
         # get  source product:
         #source_product = operator.getSourceProduct('l1b')
         source_product = operator.getSourceProduct('source')
+        fn = source_product
+        inpath = None
         if not source_product:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
 
@@ -56,9 +59,9 @@ class BalticOp:
 
         ######## Copy from breadboard
         #######
-        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
-        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
+        #inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
+        #fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
+        #outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
         sensor = "OLCI"
         outputSpectral = {'rho_toa': 'rho_toa',
                           'rho_w': 'rho_w',
@@ -72,7 +75,7 @@ class BalticOp:
             'log_bwit': 'log_iop[:,4]'
         }
 
-        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
+        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=None, sensor=sensor,
                   addName='_fwNNHL_50x40x40Noise_',
                   NNversion='TF_n',
                   outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,

@@ -6,7 +6,7 @@
     <!-- The name uniquely identifies the operator within SNAP -->
     <name>org.esa.snap.snap.baltic.BalticOp</name>
     <!-- The alias is a more user-friendly name, e.g. to be used on the command line -->
-    <alias>baltic_op</alias>
+    <alias>balticOp</alias>
     <operatorClass>org.esa.snap.python.gpf.PyOperator</operatorClass>
 
     <version>0.1</version>
@@ -21,7 +21,7 @@
              can be specified by referencing them with the here defined names.
          -->
         <sourceProduct>
-            <name>l1b</name>
+            <name>source_product</name>
         </sourceProduct>
     </namedSourceProducts>
 

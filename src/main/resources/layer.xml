@@ -9,7 +9,7 @@
                 <attr name="instanceCreate"
                       methodvalue="org.openide.awt.Actions.alwaysEnabled"/>
                 <attr name="delegate" methodvalue="org.esa.snap.core.gpf.ui.DefaultOperatorAction.create"/>
-                <attr name="operatorName" stringvalue="baltic_op"/>
+                <attr name="operatorName" stringvalue="balticOp"/>
                 <attr name="displayName" stringvalue="Baltic+ Atmospheric Correction"/>
                 <attr name="dialogTitle" stringvalue="Baltic+ Atmospheric Correction"/>
                 <attr name="helpId" stringvalue="pyBalticacDoc"/>  <!--The helpId if help contents is provided-->
