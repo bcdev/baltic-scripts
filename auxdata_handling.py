@@ -53,19 +53,30 @@ def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True):
     return var
 
 
-def getGeoPositionsForS2Product(product):
-    width = product.getSceneRasterWidth()
-    height = product.getSceneRasterHeight()
+def getGeoPositionsForS2Product(product, reshape=True, subset=None):
+
+    if subset is None:
+        height = product.getSceneRasterHeight()
+        width = product.getSceneRasterWidth()
+        sline, eline, scol, ecol = 0, height-1, 0, width -1
+    else:
+        sline,eline,scol,ecol = subset
+        height = eline - sline + 1
+        width = ecol - scol + 1
 
     latitude = np.zeros((height, width))
     longitude = np.zeros((height, width))
 
-    for x in range(width):
-        for y in range(height):
+    for ix, x in enumerate(range(scol, ecol+1)):
+        for iy, y in enumerate(range(sline, eline+1)):
             pixelPos = PixelPos(x + 0.5, y + 0.5)
             geoPos = product.getSceneGeoCoding().getGeoPos(pixelPos, None)
-            latitude[y,x] = geoPos.getLat()
-            longitude[y, x] = geoPos.getLon()
+            latitude[iy,ix] = geoPos.getLat()
+            longitude[iy, ix] = geoPos.getLon()
+
+    if not reshape:
+        latitude.shape = (height*width)
+        longitude.shape = (height*width)
 
     return latitude, longitude
 
@@ -168,11 +179,11 @@ def setAuxData(product, AuxFullFilePath_dict, singlePosition=False, Lat=None, Lo
     OzoneEndFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][1]) > 1000
     if OzoneStartFileValid:
         ozoneStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][0])
-        ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone', reshape=True)
+        ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone_Geophysical_Data', reshape=True)
         ozoneStartProduct.closeProductReader()
     if OzoneEndFileValid:
         ozoneEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][1])
-        ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone', reshape=True)
+        ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone_Geophysical_Data', reshape=True)
         ozoneEndProduct.closeProductReader()
 
     if singlePosition:

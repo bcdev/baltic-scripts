@@ -13,10 +13,12 @@ default_ADF = {
                 'OL_2_ACP_AX.nc'),
             'file_adf_clp': os.path.join('auxdata',
                 'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
-                'OL_2_CLP_AX.nc'),
-            'file_HYGEOS': os.path.join('auxdata','LUT.hdf')
+                'OL_2_CLP_AX.nc')
             },
         #'S2': {} TODO
+        'GENERIC': {
+            'file_HYGEOS': os.path.join('auxdata','LUT.hdf')
+            }
     }
 
 

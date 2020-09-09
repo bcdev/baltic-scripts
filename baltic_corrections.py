@@ -202,7 +202,8 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
     for i in range(tau_ray.shape[1]):
         tau_ray2[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
         ## OLCI S3A only!
-        tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure)
+        #tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure)
+        tau_ray = tau_ray2
 
         #print(i, np.nanmedian((tau_ray2[:, i] - tau_ray[:, i]) / tau_ray[:, i] * 100.))
 
@@ -224,7 +225,7 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i]]
         rho_r[:,i] = nlinear(x, LUT.rho_mol, axes) # Rayleigh
 
-    return rho_r, rho_molgli, rho_rc, tau_ray, tau_ray2
+    return rho_r, rho_molgli, rho_rc, tau_ray
 
 def vicarious_calibration(rho_ng, valid, adf_acp, sensor):
     """
