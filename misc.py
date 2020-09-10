@@ -4,23 +4,68 @@ import os
 from scipy import ndimage
 
 default_ADF = {
-        'OLCI': {
-            'file_adf_ppp': os.path.join('auxdata',
-                'S3A_OL_2_PPP_AX_20160216T000000_20991231T235959_20190109T120000___________________MPC_O_AL_005.SEN3',
-                'OL_2_PPP_AX.nc'),
-            'file_adf_acp': os.path.join('auxdata',
-                'S3A_OL_2_ACP_AX_20160216T000000_20991231T235959_20190125T120000___________________MPC_O_AL_004.SEN3',
-                'OL_2_ACP_AX.nc'),
-            'file_adf_clp': os.path.join('auxdata',
-                'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
-                'OL_2_CLP_AX.nc')
+        'OLCI': { 
+            'S3A': {
+                'file_adf_ppp': os.path.join('auxdata',
+                    'S3A_OL_2_PPP_AX_20160216T000000_20991231T235959_20190109T120000___________________MPC_O_AL_005.SEN3',
+                    'OL_2_PPP_AX.nc'),
+                'file_adf_acp': os.path.join('auxdata',
+                    'S3A_OL_2_ACP_AX_20160216T000000_20991231T235959_20190125T120000___________________MPC_O_AL_004.SEN3',
+                    'OL_2_ACP_AX.nc'),
+                'file_adf_clp': os.path.join('auxdata',
+                    'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
+                    'OL_2_CLP_AX.nc'),
+                'SRF_wavelength': os.path.join('auxdata', 'SRF_OLCI_S3A_wavelength_table_perBand.txt'),
+                'SRF_weights': os.path.join('auxdata', 'SRF_OLCI_S3A_weights_table_perBand.txt')
+                },
+            'S3B': { #TODO
+                 'file_adf_ppp': os.path.join('auxdata',
+                    'S3A_OL_2_PPP_AX_20160216T000000_20991231T235959_20190109T120000___________________MPC_O_AL_005.SEN3',
+                    'OL_2_PPP_AX.nc'),
+                'file_adf_acp': os.path.join('auxdata',
+                    'S3A_OL_2_ACP_AX_20160216T000000_20991231T235959_20190125T120000___________________MPC_O_AL_004.SEN3',
+                    'OL_2_ACP_AX.nc'),
+                'file_adf_clp': os.path.join('auxdata',
+                    'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
+                    'OL_2_CLP_AX.nc'),
+                'SRF_wavelength': os.path.join('auxdata', 'SRF_OLCI_S3B_wavelength_table_perBand.txt'),
+                'SRF_weights': os.path.join('auxdata', 'SRF_OLCI_S3B_weights_table_perBand.txt')
+                }
             },
-        #'S2': {} TODO
+
+        'S2MSI': { # TODO, currently copy S3A for ADF
+             'S2A': {
+                'file_adf_ppp': os.path.join('auxdata',
+                    'S3A_OL_2_PPP_AX_20160216T000000_20991231T235959_20190109T120000___________________MPC_O_AL_005.SEN3',
+                    'OL_2_PPP_AX.nc'),
+                'file_adf_acp': os.path.join('auxdata',
+                    'S3A_OL_2_ACP_AX_20160216T000000_20991231T235959_20190125T120000___________________MPC_O_AL_004.SEN3',
+                    'OL_2_ACP_AX.nc'),
+                'file_adf_clp': os.path.join('auxdata',
+                    'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
+                    'OL_2_CLP_AX.nc'),
+                'SRF_wavelength': os.path.join('auxdata', 'SRF_MSI_S2A_wavelength_table_perBand.txt'),
+                'SRF_weights': os.path.join('auxdata', 'SRF_MSI_S2A_weights_table_perBand.txt')
+                },
+            'S2B': {
+                 'file_adf_ppp': os.path.join('auxdata',
+                    'S3A_OL_2_PPP_AX_20160216T000000_20991231T235959_20190109T120000___________________MPC_O_AL_005.SEN3',
+                    'OL_2_PPP_AX.nc'),
+                'file_adf_acp': os.path.join('auxdata',
+                    'S3A_OL_2_ACP_AX_20160216T000000_20991231T235959_20190125T120000___________________MPC_O_AL_004.SEN3',
+                    'OL_2_ACP_AX.nc'),
+                'file_adf_clp': os.path.join('auxdata',
+                    'S3A_OL_2_CLP_AX_20160216T000000_20991231T235959_20170210T120000___________________MPC_O_AL_003.SEN3',
+                    'OL_2_CLP_AX.nc'),
+                'SRF_wavelength': os.path.join('auxdata', 'SRF_MSI_S2A_wavelength_table_perBand.txt'),
+                'SRF_weights': os.path.join('auxdata', 'SRF_MSI_S2A_weights_table_perBand.txt')
+                }
+            },
+
         'GENERIC': {
             'file_HYGEOS': os.path.join('auxdata','LUT.hdf')
             }
     }
-
 
 def nlinear(x, yp, axes):
     '''

@@ -902,7 +902,7 @@ def check_and_constrain_iop(log_iop, inputRange):
     return log_iop
 
 
-def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
+def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', subset=None, addName = '', outputSpectral=None,
                 outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
                 atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
               runAC=True, NNversion='TF', NNIOPversion='v2'):
@@ -1044,19 +1044,18 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
                 print('Please set a path to the AUX data archive.')
                 sys.exit(1)
 
+    # Define LUTs
+    file_adf_acp = default_ADF[sensor][platform]['file_adf_acp']
+    file_adf_ppp = default_ADF[sensor][platform]['file_adf_ppp']
+    file_adf_clp = default_ADF[sensor][platform]['file_adf_clp']
+
     # Read LUTs
     if sensor == 'OLCI':
-        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
         adf_acp = luts_olci.LUT_ACP(file_adf_acp)
         adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
         adf_clp = luts_olci.LUT_CLP(file_adf_clp)
     elif sensor == 'S2MSI':
         # temporary solution: read OLCI ADF and interpolate for wavelength
-        file_adf_acp = default_ADF['OLCI']['file_adf_acp']
-        file_adf_ppp = default_ADF['OLCI']['file_adf_ppp']
-        file_adf_clp = default_ADF['OLCI']['file_adf_clp']
         adf_acp = luts_olci.LUT_ACP(file_adf_acp)
         adf_ppp = luts_olci.LUT_PPP(file_adf_ppp)
         adf_clp = luts_olci.LUT_CLP(file_adf_clp)
@@ -1064,6 +1063,9 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
 
     if correction == 'HYGEOS':
         LUT_HYGEOS = lut_hygeos.LUT(default_ADF['GENERIC']['file_HYGEOS'])
+
+    file_SRF_wavelength = default_ADF[sensor][platform]['SRF_wavelength']
+    file_SRF_weights = default_ADF[sensor][platform]['SRF_weights']
 
     print("Pre-corrections")
     # Gaseous correction
@@ -1089,7 +1091,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, ad
     elif correction == 'HYGEOS':
         # Glint + Rayleigh correction
         rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-                                                                     pressure, windm, LUT_HYGEOS, altitude)
+                                                                     pressure, windm, LUT_HYGEOS, file_SRF_wavelength, file_SRF_weights, altitude)
 
     if np.sum(valid) != 0 and runAC:
         # Atmospheric model

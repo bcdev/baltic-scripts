@@ -182,7 +182,7 @@ def diffuse_transmittance(sza, oza, pressure, adf_ppp):
 
     return td
 
-def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT, altitude=None):
+def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength, pressure, windm, LUT, file_SRF_wavelength, file_SRF_weights, altitude=None):
     """
     Rayleigh + glint correction from HYGEOS LUT
     This includes correction for pressure and smile
@@ -200,10 +200,8 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         altitude = 0.
 
     for i in range(tau_ray.shape[1]):
-        tau_ray2[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
-        ## OLCI S3A only!
-        #tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure)
-        tau_ray = tau_ray2
+        #tau_ray2[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
+        tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure, file_SRF_wavelength, file_SRF_weights)
 
         #print(i, np.nanmedian((tau_ray2[:, i] - tau_ray[:, i]) / tau_ray[:, i] * 100.))
 
