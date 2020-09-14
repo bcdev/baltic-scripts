@@ -16,7 +16,8 @@ import tensorflow as tf
 
 # snappy import
 # sys.path.append('/home/cmazeran/.snap/snap-python')
-sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+#sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData
@@ -33,8 +34,8 @@ from snappy import PixelPos #org.esa.snap.core.datamodel.PixelPos
 
 
 #fetchOzone = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons.fetchOzone')
-AtmosphericAuxdata = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdata')
 AtmosphericAuxdataBuilder = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdataBuilder')
+AtmosphericAuxdata = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdata')
 TimeCoding = jpy.get_type('org.esa.snap.core.datamodel.TimeCoding')
 AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
 AncillaryCommons = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons')

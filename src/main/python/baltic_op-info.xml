@@ -21,7 +21,7 @@
              can be specified by referencing them with the here defined names.
          -->
         <sourceProduct>
-            <name>source_product</name>
+            <name>sourceProduct</name>
         </sourceProduct>
     </namedSourceProducts>
 

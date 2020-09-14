@@ -29,6 +29,7 @@ class BalticOp:
         :param operator
         :return:
         """
+        print('start initializng...')
         resource_root = os.path.dirname(__file__)
         f = open(tempfile.gettempdir() + '/baltic_.log', 'w')
 
@@ -41,27 +42,19 @@ class BalticOp:
         print('sys.version_info(): ' + str(sys.version_info) + '\n')
 
         # get  source product:
-        #source_product = operator.getSourceProduct('l1b')
-        source_product = operator.getSourceProduct('source')
-        fn = source_product
+        sourceProduct = operator.getSourceProduct('sourceProduct')
         inpath = None
-        if not source_product:
+        if not sourceProduct:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
 
-        #######parameters#########
-        sensor = operator.getParameter('sensor')
-        if sensor not in ['OLCI']:
-            raise RuntimeError('Baltic_OP supports only OLCI sensors')
+
 
         outputFormat = operator.getParameter('outputFormat')
-        if outputFormat not in ['BEAM-DIMAP']:
-            raise RuntimeError('Currently Baltic_OP supports only BEAM-DIMAP')
-
         ######## Copy from breadboard
         #######
-        #inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        #fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
-        #outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
+        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
+        fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
+        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
         sensor = "OLCI"
         outputSpectral = {'rho_toa': 'rho_toa',
                           'rho_w': 'rho_w',
@@ -75,7 +68,7 @@ class BalticOp:
             'log_bwit': 'log_iop[:,4]'
         }
 
-        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=None, sensor=sensor,
+        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
                   addName='_fwNNHL_50x40x40Noise_',
                   NNversion='TF_n',
                   outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
@@ -87,14 +80,14 @@ class BalticOp:
 
         #######
         #######
-        f.write("Start initialize: source product is " + source_product.getName() + '\n')
-        print('Start initialize: source product is ' + source_product.getName() + '\n')
+        f.write("Start initialize: source product is " + sourceProduct.getName() + '\n')
+        print('Start initialize: source product is ' + sourceProduct.getName() + '\n')
 
-        if 'S3A_OL' not in source_product.getName():
+        if 'S3A_OL' not in sourceProduct.getName():
             raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
 
-        width = source_product.getSceneRasterWidth()
-        height = source_product.getSceneRasterHeight()
+        width = sourceProduct.getSceneRasterWidth()
+        height = sourceProduct.getSceneRasterHeight()
         f.write('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         print('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
 
@@ -124,9 +117,10 @@ class BalticOp:
 
     def doExecute(self, pm):
         ######## Copy from breadboard
-        #######
+        ####### commented for now, since all is done in initialize
+        """
         inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        fn = 1
+        fn = "subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim"
         outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
         sensor = "OLCI"
         outputSpectral = {'rho_toa': 'rho_toa',
@@ -149,6 +143,7 @@ class BalticOp:
                                   correction='HYGEOS',
                                   add_c2rccIOPs=False,
                                   outputProductFormat='BEAM-DIMAP')
+        """
         pass
 
     def dispose(self, operator):
