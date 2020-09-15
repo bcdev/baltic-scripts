@@ -68,14 +68,14 @@ class BalticOp:
             'log_bwit': 'log_iop[:,4]'
         }
 
-        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
-                  addName='_fwNNHL_50x40x40Noise_',
-                  NNversion='TF_n',
+        targetProduct = baltic_AC(sourceProduct=sourceProduct, sensor='OLCI',
+                                  addName='_fwNNHL_50x40x40Noise_',
+                                  NNversion='TF_n',
                   outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
                   add_Idepix_Flags=True,
                   correction='HYGEOS',
                   add_c2rccIOPs=False,
-                  outputProductFormat=outputFormat)
+                  outputProductFormat='BEAM-DIMAP')
 
 
         #######
@@ -96,8 +96,8 @@ class BalticOp:
         # setup target product:
         #balticac_product = snappy.Product('pyBALTICAC', 'pyBALTICAC', width, height)
         targetProduct.setDescription('Baltic+ AC product')
-        targetProduct.setStartTime(source_product.getStartTime())
-        targetProduct.setEndTime(source_product.getEndTime())
+        targetProduct.setStartTime(sourceProduct.getStartTime())
+        targetProduct.setEndTime(sourceProduct.getEndTime())
 
         # setup target bands:
         # todo
@@ -116,34 +116,7 @@ class BalticOp:
         f.close()
 
     def doExecute(self, pm):
-        ######## Copy from breadboard
         ####### commented for now, since all is done in initialize
-        """
-        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        fn = "subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim"
-        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
-        sensor = "OLCI"
-        outputSpectral = {'rho_toa': 'rho_toa',
-                          'rho_w': 'rho_w',
-                          'rho_wmod': 'rho_wmod',
-                          'rho_wn': 'rho_wn'
-                          }
-        outputScalar = {'log_apig': 'log_iop[:,0]',
-                        'log_adet': 'log_iop[:,1]',
-                        'log_agelb': 'log_iop[:,2]',
-                        'log_bpart': 'log_iop[:,3]',
-                        'log_bwit': 'log_iop[:,4]'
-                        }
-
-        targetProduct = baltic_AC(scene_path=inpath, filename=fn, outpath=outpath, sensor=sensor,
-                                  addName='_fwNNHL_50x40x40Noise_',
-                                  NNversion='TF_n',
-                                  outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
-                                  add_Idepix_Flags=True,
-                                  correction='HYGEOS',
-                                  add_c2rccIOPs=False,
-                                  outputProductFormat='BEAM-DIMAP')
-        """
         pass
 
     def dispose(self, operator):
