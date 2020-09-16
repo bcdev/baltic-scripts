@@ -5,7 +5,9 @@ import tempfile
 sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import numpy as np
 import snappy
-
+from snappy import GPF
+from snappy import jpy
+from snappy import ProgressMonitor
 from snappy import ProductData
 
 import baltic_ac_algorithm
@@ -46,15 +48,11 @@ class BalticOp:
         inpath = None
         if not sourceProduct:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
+        if 'S3A_OL' not in sourceProduct.getName():
+            raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
 
-
-
-        outputFormat = operator.getParameter('outputFormat')
         ######## Copy from breadboard
         #######
-        inpath = "E:\\work\projects\\baltic-scripts\\breadboard\\test_data"
-        fn = 'subset_S3A_OL_1_ERR____20180531T084955_20180531T093421_20180531T113749_2666_031_378______MAR_O_NR_002.dim'
-        outpath = "E:\Documents\projects\Baltic+\WP3_AC\\test_data\\results\\"
         sensor = "OLCI"
         outputSpectral = {'rho_toa': 'rho_toa',
                           'rho_w': 'rho_w',
@@ -74,8 +72,7 @@ class BalticOp:
                   outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
                   add_Idepix_Flags=True,
                   correction='HYGEOS',
-                  add_c2rccIOPs=False,
-                  outputProductFormat='BEAM-DIMAP')
+                  add_c2rccIOPs=False)
 
 
         #######
@@ -83,37 +80,20 @@ class BalticOp:
         f.write("Start initialize: source product is " + sourceProduct.getName() + '\n')
         print('Start initialize: source product is ' + sourceProduct.getName() + '\n')
 
-        if 'S3A_OL' not in sourceProduct.getName():
-            raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
 
         width = sourceProduct.getSceneRasterWidth()
         height = sourceProduct.getSceneRasterHeight()
         f.write('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         print('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
 
-        # get source bands:
-
-        # setup target product:
-        #balticac_product = snappy.Product('pyBALTICAC', 'pyBALTICAC', width, height)
-        targetProduct.setDescription('Baltic+ AC product')
-        targetProduct.setStartTime(sourceProduct.getStartTime())
-        targetProduct.setEndTime(sourceProduct.getEndTime())
-
-        # setup target bands:
-        # todo
-        # test: define one target band.
-        # Roman: It's all done inside baltic_AC_forward
-        # self.test_band = balticac_product.addBand('test_band', ProductData.TYPE_FLOAT64)
-        # self.test_band.setDescription('Test band: radiance0 * 2')
-
-        #snappy.ProductUtils.copyTiePointGrids(source_product, balticac_product)
-        #source_product.transferGeoCodingTo(balticac_product, None)
         #self.baltic_ac_algo = baltic_ac_algorithm.BalticAcAlgorithm()
         #self.baltic_ac_algo.run(None)
-
-        operator.setTargetProduct(targetProduct)
         f.write('end initialize.')
         f.close()
+        File = jpy.get_type('java.io.File')
+        GPF.writeProduct(targetProduct, File("E:\work\\test_from322.dim"), "BEAM-DIMAP", False, ProgressMonitor.NULL)
+        operator.setTargetProduct(targetProduct)
+
 
     def doExecute(self, pm):
         ####### commented for now, since all is done in initialize

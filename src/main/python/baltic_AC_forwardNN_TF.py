@@ -623,7 +623,7 @@ def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNI
     return log_iop
 
 def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
-                              copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP", addname='',
+                              copyOriginalProduct=False, addname='',
                               add_Idepix_Flags=False, idepixProduct=None, add_L2Flags=False, L2FlagArray=None,
                               add_Geometry=False, subset=None):
     # Initialise the output product
@@ -642,15 +642,9 @@ def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_di
         width_subset = ecol - scol + 1
     bandShape_subset = (height_subset, width_subset)
 
-    #dirname = os.path.dirname(baltic__product_path)
-    #outname, ext = os.path.splitext(os.path.basename(baltic__product_path))
-    #if outputProductFormat == "BEAM-DIMAP":
-    #    baltic__product_path = os.path.join(dirname, outname + addname +'.dim')
-    #elif outputProductFormat == 'CSV':
-    #    baltic__product_path = os.path.join(dirname, outname + addname +'.csv')
 
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
-    #balticPACProduct.setFileLocation(File(baltic__product_path))
+    #balticPACProduct.setFileLocation(File("E:\work\\test_from323.dim"))
 
     ProductUtils.copyGeoCoding(product, balticPACProduct)
 
@@ -664,21 +658,20 @@ def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_di
         data = spectral_dict[key].get('data')
         if not data is None:
             nbands_key = data.shape[-1]
-            if outputProductFormat == 'BEAM-DIMAP':
-                if sensor == 'OLCI':
-                    bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
-                elif sensor == 'S2MSI':
-                    bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
-                    bsources.append(product.getBand('B8A'))
-                    [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
+            if sensor == 'OLCI':
+                bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+            elif sensor == 'S2MSI':
+                bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
+                bsources.append(product.getBand('B8A'))
+                [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
 
             sourceData = np.ndarray(bandShape,dtype='float64') + np.nan # create unique instance to avoid MemoryError
             for i in range(nbands_key):
                 brtoa_name = key + "_" + str(i + 1)
                 # print(brtoa_name)
                 band = balticPACProduct.addBand(brtoa_name, ProductData.TYPE_FLOAT64)
-                if outputProductFormat == 'BEAM-DIMAP':
-                    ProductUtils.copySpectralBandProperties(bsources[i], band)
+                #if outputProductFormat == 'BEAM-DIMAP':
+                ProductUtils.copySpectralBandProperties(bsources[i], band)
                 band.setNoDataValue(np.nan)
                 band.setNoDataValueUsed(True)
 
@@ -828,7 +821,7 @@ def check_and_constrain_iop(log_iop, inputRange):
 
 #def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
 def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputSpectral=None,
-                outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
+                outputScalar=None, correction='HYGEOS', copyOriginalProduct=False,
                 atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
               runAC=True, NNversion='TF', NNIOPversion='v2'):
     """
@@ -1069,7 +1062,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
 
 
     targetProduct = final_setup_BalticProduct(product, None, sensor, spectral_dict, scalar_dict,
-                             copyOriginalProduct, outputProductFormat, addName,
+                             copyOriginalProduct,  addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
                              add_Geometry=True)
