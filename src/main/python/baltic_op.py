@@ -73,8 +73,8 @@ class BalticOp:
                   correction='HYGEOS',
                   add_c2rccIOPs=False)
 
-        File = jpy.get_type('java.io.File')
-        GPF.writeProduct(targetProduct, File("E:\work\\test_double.dim"), "BEAM-DIMAP", False, ProgressMonitor.NULL)
+        #File = jpy.get_type('java.io.File')
+        #GPF.writeProduct(targetProduct, File("C:\dummy.dim"), "BEAM-DIMAP", False, ProgressMonitor.NULL)
 
 
         #######
