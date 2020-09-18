@@ -14,8 +14,8 @@ import get_bands
 # Temporary function to spectrally adjust OLCI LUT to MSI
 def adjust_S2_luts(adf_acp, adf_ppp):
 
-    bands_sat_olci, *dummy = get_bands.main('OLCI', 'dummy')
-    bands_sat_msi, *dummy = get_bands.main('S2MSI', 'dummy')
+    bands_sat_olci, *dummy = get_bands.main('OLCI')
+    bands_sat_msi, *dummy = get_bands.main('S2MSI')
 
     nband_olci = len(bands_sat_olci)
     nband_msi = len(bands_sat_msi)

@@ -56,73 +56,75 @@ from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPosition
 # locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
 
 # Define NNs as global variables
-def read_NNs(sensor, NNversion, NNIOPversion):
+def read_NNs(sensor, NNversion, NNformat, NNIOPversion, NNIOPformat):
     global nn_forward, nn_backward, nn_backward_iop
-    global inputRange_forward, outputRange_forward, inputRange_backward, outputRange_backward
+    global inputRange_forward, outputRange_forward, inputRange_backward, outputRange_backward, outputBand_forward, inputBand_backward, inputBand_backwardIOP
     global session
 
-    # Define paths
-    nnFilePath = {
-            'OLCI' : {
-                'forward' : {
-                    'v2': "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net",
-                    'v3': "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net",
-                    'TF': "NN_TF/fwNNHL_logLossI8x50x40x40xO16_auxVarN0_batch20000_epoch60000_loss0.0.h5",
-                    'TF_n': "NN_TF_n/fwNNHL_logLossI8x50x40x40xO16GaussianN_auxVarN0_batch20000_epoch121601_loss0.00606_NoiseFix0.4.h5"
-                    },
-                'backward' : {
-                    'v2': "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net",
-                    'v3': "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net",
-                    'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch200000_loss0.00059.h5",
-                    #'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch90000_loss0.0.h5"
-                    'TF_n': "NN_TF_n/bwNNHL_LossLogRhow_I8x50x40x40xO16GaussianN_b2E5_e121601_I19GaussNx97x97x97xO5_auxVarN0_batch20000_epoch192523_loss0.00114.h5"
-                    }
-                },
-            'S2MSI' : {
-                'forward': {
-                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net",
-                    'TF': "NN_TF/std_s2_20160502_fwI10x17x97x47xO6.h5"
-                    },
-                'backward' : {
-                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/rw_iop/97x77x37_17515.9.net",
-                    'TF': "NN_TF/std_s2_20160502_bwI11x97x77x37xO5.h5"
-                    }
-                }
+    # Define suffix depending on format
+    NNsuffix = {
+            'net': 'net', 
+            'TF': 'h5'
             }
 
-    nnForwardFilePath = nnFilePath[sensor]['forward'][NNversion]
-    nnBackwardFilePath = nnFilePath[sensor]['backward'][NNversion]
-    nnBackwardIOPFilePath = nnFilePath[sensor]['backward'][NNIOPversion]
+    # Define paths of NNs
+    filePath = glob.glob(os.path.join('NNs',sensor,NNversion,'forward','*.%s'%NNsuffix[NNformat]))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/forward/"%(NNformat,sensor,NNversion))
+        sys.exit(1)
+    else:
+        nnForwardFilePath = filePath[0]
+
+    filePath = glob.glob(os.path.join('NNs',sensor,NNversion,'backward','*.%s'%NNsuffix[NNformat]))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/backward/"%(NNformat,sensor,NNversion))
+        sys.exit(1)
+    else:
+        nnBackwardFilePath = filePath[0]
+
+    filePath = glob.glob(os.path.join('NNs',sensor,NNIOPversion,'backward','*.%s'%NNsuffix[NNIOPformat]))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/backward/"%(NNIOPformat,sensor,NNIOPversion))
+        sys.exit(1)
+    else:
+        nnBackwardIOPFilePath = filePath[0]
 
     # Open NNs
-    nn_forward = open_NN(nnForwardFilePath, NNversion)
-    nn_backward = open_NN(nnBackwardFilePath, NNversion)
-    nn_backward_iop = open_NN(nnBackwardIOPFilePath, NNIOPversion)
+    nn_forward = open_NN(nnForwardFilePath, NNversion, NNformat)
+    nn_backward = open_NN(nnBackwardFilePath, NNversion, NNformat)
+    nn_backward_iop = open_NN(nnBackwardIOPFilePath, NNIOPversion, NNIOPformat)
 
-    # Define ranges for forward NN (not used by backward so far and missing for TF)
-    if NNversion == 'v2' or NNversion == 'v3':
-        inputRange_forward, outputRange_forward = read_NN_input_ranges_fromFile(nnForwardFilePath)
-    elif NNversion == 'TF' or NNversion == 'TF_n':
-        if sensor == 'OLCI':
-            inputRange_forward = {
-               'apig' :(-4.482068, 0.82549036),
-                'adet':(-4.828189, 1.3987169),
-                'agelb': (-2.5902672, 1.9878744),
-                'bpart': (-2.690456, 4.9607444),
-                'bwit':  (-3.2042336, 5.568726),
-                'nn_raa':   (-1.0, 1.0),
-                'oza': (0.49999997, 1.0),
-                'sza': (0.25881895, 1.0)
-                }
-        elif sensor == 'S2MSI': # Get ranges from .net format because TF is just a reformatting
-            inputRange_forward, outputRange_forward = read_NN_input_ranges_fromFile(nnFilePath['S2MSI']['forward']['v2'])
-            inputRange_backward, outputRange_backward = read_NN_input_ranges_fromFile(nnFilePath['S2MSI']['backward']['v2'])
+    # Define paths of .net files containing the ranges
+    filePath = glob.glob(os.path.join('NNs',sensor,NNversion,'forward','*.net'))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/forward/"%('net',sensor,NNversion))
+        sys.exit(1)
+    else:
+        nnForwardFilePathNet = filePath[0]
 
+    filePath = glob.glob(os.path.join('NNs',sensor,NNversion,'backward','*.net'))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/backward/"%('net',sensor,NNversion))
+        sys.exit(1)
+    else:
+        nnBackwardFilePathNet = filePath[0]
 
-def open_NN(nnFilePath, NNversion):
+    filePath = glob.glob(os.path.join('NNs',sensor,NNIOPversion,'backward','*.net'))
+    if filePath == []:
+        print("Missing NN in %s format in NNs/%s/%s/backward/"%('net',sensor,NNIOPversion))
+        sys.exit(1)
+    else:
+        nnBackwardIOPFilePathNet = filePath[0]
+
+    # Define ranges for forward NN and backward NN
+    inputRange_forward, outputRange_forward, outputBand_forward = read_NN_input_ranges_fromFile(nnForwardFilePathNet)
+    inputRange_backward, outputRange_backward, inputBand_backward = read_NN_input_ranges_fromFile(nnBackwardFilePathNet)
+    inputRange_backwardIOP, outputRange_backwardIOP, inputBand_backwardIOP = read_NN_input_ranges_fromFile(nnBackwardIOPFilePathNet)
+    
+def open_NN(nnFilePath, NNversion, NNformat):
     global session
 
-    if NNversion == 'v2' or NNversion == 'v3':
+    if NNformat == 'net':
         if 'session' not in globals():
             session = None
         NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
@@ -130,7 +132,7 @@ def open_NN(nnFilePath, NNversion):
         nnCode = nnfile.read()
         nn_object = NNffbpAlphaTabFast(nnCode)
         nnfile.close()
-    elif NNversion == 'TF' or NNversion == 'TF_n':
+    elif NNformat == 'TF':
         # Open session for tf v1.X
         TF_version = tf.__version__.split('.')[0]
         if TF_version == '1':
@@ -144,7 +146,7 @@ def open_NN(nnFilePath, NNversion):
     return nn_object
 
 def read_NN_input_ranges_fromFile(nnFilePath):
-    """ Read input range for the forward NN """
+    """ Read input range in the .net file """
     file = open(nnFilePath, 'r')
     lines = [line.rstrip('\n') for line in file]
     file.close()
@@ -159,6 +161,7 @@ def read_NN_input_ranges_fromFile(nnFilePath):
 
     input_range = np.zeros((Ninput, 2))
     output_range = np.zeros((Noutput, 2))
+    NN_bands = []  # Either input or output bands
 
     i = 0
     for line in lines:
@@ -167,6 +170,8 @@ def read_NN_input_ranges_fromFile(nnFilePath):
             t = t.split(',')
             input_range[i, 0] = float(t[0])
             input_range[i, 1] = float(t[1])
+            if 'log_rw_' in line:
+                NN_bands.append(int(line.split('log_rw_')[1].split(' ')[0]))
             i += 1
     i = 0
     for line in lines:
@@ -174,9 +179,11 @@ def read_NN_input_ranges_fromFile(nnFilePath):
             t = line.split('[')[1][:-1]
             output_range[i, 0] = float(t.split(',')[0])
             output_range[i, 1] = float(t.split(',')[1])
+            if 'log_rw_' in line:
+                NN_bands.append(int(line.split('log_rw_')[1].split(' ')[0]))
             i += 1
 
-    return input_range, output_range
+    return input_range, output_range, NN_bands
 
 
 def get_band_or_tiePointGrid(product, name, dtype='float32', reshape=True, subset=None):
@@ -464,16 +471,16 @@ def check_valid_pixel_expression_L1(product, sensor, subset=None):
 
     return valid_pixel_flag
 
-def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, NNversion, sensor):
-    if NNversion == 'v2' or NNversion == 'v3':
+def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, NNformat, sensor):
+    if NNformat == 'net':
         return apply_forwardNN_net(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
-    elif NNversion == 'TF' or NNversion == 'TF_n':
+    elif NNformat == 'TF':
         return apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, sensor)
 
-def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNversion, sensor, NNIOP=False):
-    if NNversion == 'v2' or NNversion == 'v3':
+def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNformat, sensor, NNIOP=False):
+    if NNformat == 'net':
         return apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP, sensor)
-    elif NNversion == 'TF' or NNversion =='TF_n':
+    elif NNformat == 'TF':
         return apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP, sensor)
 
 def apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, sensor):
@@ -905,7 +912,7 @@ def check_and_constrain_iop(log_iop, inputRange):
 def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', subset=None, addName = '', outputSpectral=None,
                 outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
                 atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
-              runAC=True, NNversion='TF', NNIOPversion='v2'):
+              runAC=True, NNversion='v1_baltic+', NNformat='TF', NNIOPversion='v2', NNIOPformat='net'):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -913,17 +920,33 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
 
 
     # Read the NNs
-    read_NNs(sensor, NNversion, NNIOPversion)
+    read_NNs(sensor, NNversion, NNformat, NNIOPversion, NNIOPformat)
 
     # Get sensor & AC bands
     global bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs
-    global iband_corr, iband_chi2, iband_forwardNN, iband_backwardNN, iband_abs
-    bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs = get_bands.main(sensor,"dummy")
+    global iband_corr, iband_chi2, iband_forwardNN, iband_backwardNN, iband_backwardNNIOP, iband_abs
+    bands_sat, bands_rw, bands_corr, bands_chi2,  bands_abs = get_bands.main(sensor)
     nbands = len(bands_sat)
+    # Get band of NNs
+    bands_forwardNN = np.array(outputBand_forward) 
+    bands_backwardNN = np.array(inputBand_backward)
+    bands_backwardNNIOP = np.array(inputBand_backwardIOP)
+    # Check NNs bands
+    for NN, band_set in zip(['forward_NN','backward_NN','backward_NNIOP'], [bands_forwardNN, bands_backwardNN, bands_backwardNNIOP]):
+        if not set(band_set).issubset(set(bands_sat)):
+            print("Error: bands of %s does not match sensor band:"%NN, band_set)
+            sys.exit(1)
+    # Check bands_corr and band_chi2 are provided by forward NN
+    for band_name, band_set in zip(['bands_corr', 'bands_chi2'], [bands_corr, bands_chi2]):
+        if not set(band_set).issubset(set(bands_forwardNN)):
+            print("Error: %s not in bands of forward_NN"%band_name)
+            sys.exit(1)
+    # Identify index of bands
     iband_corr = np.searchsorted(bands_sat, bands_corr)
     iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
     iband_forwardNN = np.searchsorted(bands_sat, bands_forwardNN)
     iband_backwardNN = np.searchsorted(bands_sat, bands_backwardNN)
+    iband_backwardNNIOP = np.searchsorted(bands_sat, bands_backwardNNIOP)
     iband_abs = np.searchsorted(bands_sat, bands_abs)
 
     # Initialising a product for Reading with snappy
@@ -1100,7 +1123,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
 
         # Core AC
         print("Inversion")
-        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion, sensor)
+        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNformat, sensor)
         print("")
 
         # Set absorption band to NaN
@@ -1114,7 +1137,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
         print("Normalize spectra")
         angle0 = np.zeros(npix)
         rho_wn = np.zeros((npix, nbands)) + np.nan
-        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion, sensor)/rho_wmod[:,iband_forwardNN] * rho_w[:,iband_forwardNN]
+        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNformat, sensor)/rho_wmod[:,iband_forwardNN] * rho_w[:,iband_forwardNN]
     else:
         rho_w = np.zeros((npix, nbands)) + np.nan
         rho_wn = np.zeros((npix, nbands)) + np.nan
@@ -1149,12 +1172,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
 
     if add_c2rccIOPs:
         # Apply NNIOP to compute final IOPs
-        # Care that iband_backwardNN is for NNversion; TODO in a more generic way, ideally with bands given in the NN
-        if NNIOPversion == 'TF':
-            iband_backwardNNIOP = iband_backwardNN
-        elif NNIOPversion == 'v2' or NNIOPversion == 'v3':
-            iband_backwardNNIOP = iband_backwardNN[0:12]
-        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNNIOP], sza, oza, nn_raa, valid, NNIOPversion, sensor, NNIOP=True)
+        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNNIOP], sza, oza, nn_raa, valid, NNIOPformat, sensor, NNIOP=True)
         iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
         if scalar_dict is None:
             scalar_dict = {}
@@ -1221,7 +1239,7 @@ def spectral_MSA(wav, Rprime, x0=[0.0, -1., 500.], wav0=865):
 
     return res
 
-def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion, sensor):
+def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNformat, sensor):
     global n_evaluation
     n_evaluation = 0
 
@@ -1254,7 +1272,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     i_reduction = np.zeros(n_pix, dtype=bool)
 
     # Start NM - Define first vertice xbest of the simplex
-    log_iop = apply_backwardNN(rho_rc[:,iband_backwardNN], sza, oza, nn_raa, valid, NNversion, sensor)
+    log_iop = apply_backwardNN(rho_rc[:,iband_backwardNN], sza, oza, nn_raa, valid, NNformat, sensor)
     xbest = log_iop[valid,0:niop]
 
     while n_iter_NM < n_iter_NM_max:
@@ -1271,7 +1289,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
         # Evaluate function at first simplex
         for iv in range(n_vertex):
             #simplex[:,iv] = check_and_constrain_iop(simplex[:,iv], inputRange_forward)
-            chi2_NM[:,iv], rho_w_NM[:,iv], rho_wmod_NM[:,iv], rho_ag_NM[:,iv], rho_ag_mod_NM[:,iv] = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, sensor)
+            chi2_NM[:,iv], rho_w_NM[:,iv], rho_wmod_NM[:,iv], rho_ag_NM[:,iv], rho_ag_mod_NM[:,iv] = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNformat, sensor)
                 
         # Loop
         n_iter = 0
@@ -1316,7 +1334,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
             xr = xc + (xc-xworse)
             # Evaluate reflection
             #xr = check_and_constrain_iop(xr, inputRange_forward)
-            yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, sensor)
+            yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNformat, sensor)
 
             # Replace vertex
             i_reflection = (ybest <= yr) & (yr <  ysecond)
@@ -1350,7 +1368,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
             # Evaluate new vertex for expansion or contraction
             if i_expansion.any() or i_contraction.any():
                 #xnew = check_and_constrain_iop(xnew, inputRange_forward)
-                ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, sensor)
+                ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNformat, sensor)
 
             # Apply expansion
             if i_expansion.any():
@@ -1409,7 +1427,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                 # Evaluate reduction
                 for iv in range(n_vertex):
                     #simplex[i_reduction, iv] = check_and_constrain_iop(simplex[i_reduction, iv], inputRange_forward)
-                    y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, sensor)
+                    y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNformat, sensor)
                     chi2_NM[range_pix[i_reduction], iv] = y[i_reduction] # Care y defined only for dopix=i_reduction
                     rho_w_NM[range_pix[i_reduction], iv] = rho_w_tmp[i_reduction]
                     rho_wmod_NM[range_pix[i_reduction], iv] = rho_wmod_tmp[i_reduction]
@@ -1508,7 +1526,7 @@ def diameter(simplex):
             d = np.amax((d,dij),axis=0)
     return d
 
-def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, sensor, dopix=np.array(False)):
+def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNformat, sensor, dopix=np.array(False)):
     global n_evaluation
     n_evaluation += 1
 
@@ -1529,7 +1547,7 @@ def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza
     #log_iop = check_and_constrain_iop(vertices[index], inputRange_forward) # Don't apply it, gives worse results
     log_iop = vertices[index]
     rho_wmod = np.zeros((n_pix, nbands)) + np.NaN
-    rho_wmod[:,iband_forwardNN] = apply_forwardNN(log_iop, sza[valid][index], oza[valid][index], nn_raa[valid][index], all_valid, NNversion, sensor)
+    rho_wmod[:,iband_forwardNN] = apply_forwardNN(log_iop, sza[valid][index], oza[valid][index], nn_raa[valid][index], all_valid, NNformat, sensor)
 
     # Evaluate rho_ag
     rho_ag = rho_rc[valid][index] - td[valid][index]*rho_wmod
