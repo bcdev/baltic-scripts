@@ -15,9 +15,6 @@ import glob
 import tensorflow as tf
 
 # snappy import
-# sys.path.append('/home/cmazeran/.snap/snap-python')
-#sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
-sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import snappy as snp
 from snappy import Product
 from snappy import ProductData

@@ -2,7 +2,6 @@ import os
 import platform
 import sys
 import tempfile
-sys.path.append("C:\\Users\Telpecarne\.snap\snap-python")
 import numpy as np
 import snappy
 from snappy import GPF
@@ -22,7 +21,7 @@ class BalticOp:
     """
 
     def __init__(self):
-        self.source_product = None
+        self.sourceProduct = None
         pass
 
     def initialize(self, operator):
@@ -74,6 +73,9 @@ class BalticOp:
                   correction='HYGEOS',
                   add_c2rccIOPs=False)
 
+        File = jpy.get_type('java.io.File')
+        GPF.writeProduct(targetProduct, File("E:\work\\test_double.dim"), "BEAM-DIMAP", False, ProgressMonitor.NULL)
+
 
         #######
         #######
@@ -90,8 +92,6 @@ class BalticOp:
         #self.baltic_ac_algo.run(None)
         f.write('end initialize.')
         f.close()
-        File = jpy.get_type('java.io.File')
-        GPF.writeProduct(targetProduct, File("E:\work\\test_from322.dim"), "BEAM-DIMAP", False, ProgressMonitor.NULL)
         operator.setTargetProduct(targetProduct)
 
 
