@@ -6,6 +6,8 @@ average of residues:
  training 2775.453194/3801626/10=0.000091  test 552.576381/749689/8=0.000092
  ratio avg.train/avg.test=0.990497
 
+scaling is True
+
 the net has 10 inputs:
 input  1 is sun_zenith in [0.000686,75.000000]
 input  2 is view_zenith in [0.000007,34.990000]

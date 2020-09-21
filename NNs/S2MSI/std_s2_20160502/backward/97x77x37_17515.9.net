@@ -6,6 +6,8 @@ average of residues:
  training 17515.900588/920284/11=0.003807  test 4457.747442/234716/5=0.003798
  ratio avg.train/avg.test=1.002162
 
+scaling is True
+
 the net has 11 inputs:
 input  1 is sun_zeni in [0.000069,75.000000]
 input  2 is view_zeni in [0.000018,30.000000]
