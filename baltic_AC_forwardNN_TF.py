@@ -839,10 +839,10 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
     # Read the NNs
     read_NNs(sensor, NNversion, NNIOPversion)
 
-    # Get sensor & AC bands
-    global bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs
+    # Get sensor & NN bands
+    global bands_sat, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs
     global iband_corr, iband_chi2, iband_forwardNN, iband_backwardNN, iband_backwardNNIOP, iband_abs
-    bands_sat, bands_rw, bands_corr, bands_chi2,  bands_abs = get_bands.main(sensor)
+    bands_sat, bands_corr, bands_chi2,  bands_abs = get_bands.main(sensor)
     nbands = len(bands_sat)
     # Get band of NNs
     bands_forwardNN = np.array(nnForward_IO.bands) 
@@ -853,11 +853,26 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
         if not set(band_set).issubset(set(bands_sat)):
             print("Error: bands of %s does not match sensor band:"%NN, band_set)
             sys.exit(1)
-    # Check bands_corr and band_chi2 are provided by forward NN
-    for band_name, band_set in zip(['bands_corr', 'bands_chi2'], [bands_corr, bands_chi2]):
-        if not set(band_set).issubset(set(bands_forwardNN)):
-            print("Error: %s not in bands of forward_NN"%band_name)
-            sys.exit(1)
+    # Check bands_corr and band_chi2 are provided by forward NN. If not, take intersection
+    bands_AC = {
+            'bands_corr': bands_corr,
+            'bands_chi2': bands_chi2
+            }
+    for band_set, bands_value in zip(bands_AC, bands_AC.values()):
+        if not set(bands_value).issubset(set(bands_forwardNN)):
+                print("WARNING: %s is not a subset of bands_forwardNN:"%band_set)
+                # Searching intersection
+                bands_value = list(set(bands_value) & set(bands_forwardNN))
+                if len(bands_value) == 0:
+                    print("         Intersection empty between %s and bands_forwardNN - Aborted"%band_set)
+                    sys.exit(1)
+                else:
+                    bands_value.sort()
+                    bands_AC[band_set] = bands_value
+                    print("         %s limited to "%band_set, bands_AC[band_set])
+    bands_corr = bands_AC['bands_corr']
+    bands_chi2 = bands_AC['bands_chi2']
+
     # Identify index of bands
     iband_corr = np.searchsorted(bands_sat, bands_corr)
     iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
