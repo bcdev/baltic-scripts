@@ -22,11 +22,11 @@ input 10 is log_rw_705 in [-9.700000,-2.177000]
 input 11 is log_rw_740 in [-11.240000,-3.110000]
 
 the net has 5 outputs:
-output  1 is log_conc_apig in [-11.450000,1.711000]
-output  2 is log_conc_adet in [-9.903000,1.787000]
-output  3 is log_conc_agelb in [-9.903000,0.000000]
-output  4 is log_conc_bpart in [-6.908000,4.082000]
-output  5 is log_conc_bwit in [-6.908000,4.087000]
+output  1 is log_apig in [-11.450000,1.711000]
+output  2 is log_adet in [-9.903000,1.787000]
+output  3 is log_agelb in [-9.903000,0.000000]
+output  4 is log_bpart in [-6.908000,4.082000]
+output  5 is log_bwit in [-6.908000,4.087000]
 
 ranges repeated for easier input
 #
