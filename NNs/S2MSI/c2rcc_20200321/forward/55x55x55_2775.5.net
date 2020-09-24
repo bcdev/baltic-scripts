@@ -22,10 +22,10 @@ input 10 is log_bwit in [-6.908000,6.745000]
 
 the net has 8 outputs:
 output  1 is log_rw_443 in [-7.620000,-0.796100]
-output  2 is log_rw_489 in [-7.526000,-0.745700]
+output  2 is log_rw_490 in [-7.526000,-0.745700]
 output  3 is log_rw_560 in [-7.323000,-0.689000]
 output  4 is log_rw_665 in [-8.026000,-0.723100]
-output  5 is log_rw_704 in [-8.549000,-0.761900]
+output  5 is log_rw_705 in [-8.549000,-0.761900]
 output  6 is log_rw_740 in [-9.954000,-1.043000]
 output  7 is log_rw_783 in [-10.010000,-1.055000]
 output  8 is log_rw_865 in [-11.010000,-1.420000]
