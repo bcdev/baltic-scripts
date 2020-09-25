@@ -66,17 +66,11 @@ def factor_in_ROT(altitude, pressure, latitude, bandshape=None, plotThis=False):
     return factor
 
 
-def rod_SRF(bandNo, co2=360., latitude=None, altitude=None, pressure=None):
+def rod_SRF(bandNo, co2=360., latitude=None, altitude=None, pressure=None, file_SRF_wavelength='', file_SRF_weights=''):
     factor = factor_in_ROT(altitude, pressure, latitude)
 
-    # SRF_path_wavelength = "E:\Documents\projects\S3MPC\Rayleigh\SRF_OLCI_wavelength_table_perBand.txt"
-    # SRF_path_weights = "E:\Documents\projects\S3MPC\Rayleigh\SRF_OLCI_weights_table_perBand.txt"
-    SRF_path_wavelength = os.path.join("auxdata", "SRF_OLCI_wavelength_table_perBand.txt")
-    SRF_path_weights = os.path.join("auxdata", "SRF_OLCI_weights_table_perBand.txt")
-
-    SRF_lam = pd.read_csv(SRF_path_wavelength, sep='\t', header=None)
-    SRF_weight = pd.read_csv(SRF_path_weights, sep='\t', header=None)
-
+    SRF_lam = pd.read_csv(file_SRF_wavelength, sep='\t', header=None)
+    SRF_weight = pd.read_csv(file_SRF_weights, sep='\t', header=None)
     ## wavelength dependent: scattering cross-section sigma!
     # constants describing the state of the atmosphere and which we don't know; better values may be used if known
     CO2 = co2 * 1E-6  # 3.6E-4  # CO2 concentration at pixel; typical values are 300 to 360 ppm; here: parts per volumn
