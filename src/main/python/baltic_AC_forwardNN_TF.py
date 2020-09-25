@@ -31,8 +31,8 @@ from snappy import PixelPos #org.esa.snap.core.datamodel.PixelPos
 
 
 #fetchOzone = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons.fetchOzone')
-AtmosphericAuxdataBuilder = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdataBuilder')
 AtmosphericAuxdata = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdata')
+AtmosphericAuxdataBuilder = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdataBuilder')
 TimeCoding = jpy.get_type('org.esa.snap.core.datamodel.TimeCoding')
 AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
 AncillaryCommons = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons')
@@ -51,57 +51,62 @@ import luts_olci
 import lut_hygeos
 from auxdata_handling import setAuxData, checkAuxDataAvailablity, getGeoPositionsForS2Product, yearAndDoyAndHourUTC
 
+# POLYMER
+sys.path.append('/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.11')
+from polymer.water import ParkRuddick
+path_aux_common = '/home/cmazeran/Documents/solvo/Projets/Brockmann_Consult/OC_CCI/POLYMER4.1/auxdata/common/'
+
 # Set locale for proper time reading with datetime
-# locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+locale.setlocale(locale.LC_ALL, 'en_US.UTF_8')
+
 
 # Define NNs as global variables
-def read_NNs(sensor, NNversion, NNIOPversion):
-    global nn_forward, nn_backward, nn_backward_iop
+def read_NNs(sensor, NNversion):
+    global nnForwardFilePath, nnBackwardFilePath, nnNormFilePath
+    global nn_forward, nn_backward
     global inputRange_forward
+    global nn_iop_rw, nn_rw_iop
     global session
 
     # Define paths
-    nnFilePath = {
-            'OLCI' : {
-                'forward' : {
-                    'v2': "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net",
-                    'v3': "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net",
-                    'TF': "NN_TF/fwNNHL_logLossI8x50x40x40xO16_auxVarN0_batch20000_epoch60000_loss0.0.h5",
-                    'TF_n': "NN_TF_n/fwNNHL_logLossI8x50x40x40xO16GaussianN_auxVarN0_batch20000_epoch121601_loss0.00606_NoiseFix0.4.h5"
-                    },
-                'backward' : {
-                    'v2': "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net",
-                    'v3': "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net",
-                    'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch200000_loss0.00059.h5",
-                    #'TF': "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch90000_loss0.0.h5"
-                    'TF_n': "NN_TF_n/bwNNHL_LossLogRhow_I8x50x40x40xO16GaussianN_b2E5_e121601_I19GaussNx97x97x97xO5_auxVarN0_batch20000_epoch192523_loss0.00114.h5"
-                    }
-                },
-            'S2MSI' : {
-                'forward': {
-                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
-                    },
-                'backward' : {
-                    'v2': "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
-                    }
-                }
-            }
+    if sensor == 'OLCI':
+        if NNversion == 'v2':
+            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/iop_rw/77x77x77_1798.8.net"
+            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_iop/37x37x37_596495.4.net"
+            nnNormFilePath = "forwardNN_c2rcc/olci/olci_20171221/rw_rwnorm/77x77x77_34029.1.net"
+        elif NNversion == 'v3':
+            nnForwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/iop_rw/55x55x55_40.3.net"
+            nnBackwardFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_iop/55x55x55_99.6.net"
+            nnNormFilePath = "forwardNN_c2rcc/olci/olci_20190414/rw_rwnorm/77x77x77_34029.1.net"
+        elif NNversion == 'TF':
+            nnForwardFilePath = "NN_TF/fwNNHL_logLossI8x50x40x40xO16_auxVarN0_batch20000_epoch60000_loss0.0.h5"
+            nnBackwardFilePath = "NN_TF/bwNNHL_LossLogRhow_I8x50x40x40xO16_b2E5_e6E5_I19x77x77x77xO5_auxVarN0_batch10000_epoch90000_loss0.0.h5"
+        elif NNversion == 'TF_Schiller': #input + output like 'TF'; converted into old .net format and readable with old c-functions, which might be faster than tensorflow??
+            nnForwardFilePath = "NN_reciprocal/fwNNc2rcc_linearLossI8x97x97x97xO12batch300_epoch200000_loss0.0.net"
+            nnBackwardFilePath = "NN_reciprocal/bwNNc2rcc_LossLogRhow_fwNN97_2e6_I15x77x77x77xO5batch300_epoch100000_loss0.00242.net"
 
-    nnForwardFilePath = nnFilePath[sensor]['forward'][NNversion]
-    nnBackwardFilePath = nnFilePath[sensor]['backward'][NNversion]
-    nnBackwardIOPFilePath = nnFilePath[sensor]['backward'][NNIOPversion]
+    elif sensor == 'S2MSI':
+        nnForwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/iop_rw/17x97x47_125.5.net"
+        nnBackwardFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
+        nnNormFilePath = "forwardNN_c2rcc/msi/std_s2_20160502/rw_rwnorm/27x7x27_28.0.net"
 
-    # Open NNs
-    nn_forward = open_NN(nnForwardFilePath, NNversion)
-    nn_backward = open_NN(nnBackwardFilePath, NNversion)
-    nn_backward_iop = open_NN(nnBackwardIOPFilePath, NNIOPversion)
-
-    # Define ranges for forward NN (not used by backward so far and missing for TF)
     if NNversion == 'v2' or NNversion == 'v3':
         inputRange_forward = read_NN_input_ranges_fromFile(nnForwardFilePath)
-    elif NNversion == 'TF' or NNversion == 'TF_n':
-        inputRange_forward = {
-           'apig' :(-4.482068, 0.82549036),
+        inputRange_backward = read_NN_input_ranges_fromFile(nnBackwardFilePath)
+        # TODO READ NNs
+    elif NNversion == 'TF':
+        # Open session for tf v1.X
+        TF_version = tf.__version__.split('.')[0]
+        if TF_version == '1':
+            session = tf.InteractiveSession()
+        else:
+            session = None
+        # Read NNs
+        nn_forward = tf.keras.models.load_model(nnForwardFilePath)
+        nn_backward = tf.keras.models.load_model(nnBackwardFilePath)
+        #col_names = ['apig', 'adet', 'agelb', 'bpart', 'bwit']
+        inputRange_forward = { #TODO OrderedDict?
+            'apig' :(-4.482068, 0.82549036),
             'adet':(-4.828189, 1.3987169),
             'agelb': (-2.5902672, 1.9878744),
             'bpart': (-2.690456, 4.9607444),
@@ -109,31 +114,29 @@ def read_NNs(sensor, NNversion, NNIOPversion):
             'nn_raa':   (-1.0, 1.0),
             'oza': (0.49999997, 1.0),
             'sza': (0.25881895, 1.0)
-            }
-
-def open_NN(nnFilePath, NNversion):
-    global session
-
-    if NNversion == 'v2' or NNversion == 'v3':
-        if 'session' not in globals():
-            session = None
+        }
+        # TODO inputRange_backward
+    elif NNversion == 'TF_Schiller':
+        inputRange_forward = { #TODO OrderedDict?
+            'apig': (-4.431202411651611, 0.8628255128860474),
+            'adet': (-4.135058403015137, 2.091784954071045),
+            'agelb': (-1.897108793258667, 2.6810054779052734),
+            'bpart': (-2.7132925987243652, 4.960668087005615),
+            'bwit': (-3.204205274581909, 5.568716526031494),
+            'nn_raa': (-1.0, 1.0),
+            'oza': (0.573578953742981, 1.0),
+            'sza': (0.25882574915885925, 1.0)
+        }
+        # TODO inputRange_backward
         NNffbpAlphaTabFast = jpy.get_type('org.esa.snap.core.nn.NNffbpAlphaTabFast')
-        nnfile = open(nnFilePath, 'r')
+        nnfile = open(nnForwardFilePath, 'r')
         nnCode = nnfile.read()
-        nn_object = NNffbpAlphaTabFast(nnCode)
+        nn_iop_rw = NNffbpAlphaTabFast(nnCode)
         nnfile.close()
-    elif NNversion == 'TF' or NNversion == 'TF_n':
-        # Open session for tf v1.X
-        TF_version = tf.__version__.split('.')[0]
-        if TF_version == '1':
-            if 'session' not in globals() or (session is None):
-                session = tf.InteractiveSession()
-        else:
-            session = None
-        # Read NNs
-        nn_object = tf.keras.models.load_model(nnFilePath)
-
-    return nn_object
+        nnfile = open(nnBackwardFilePath, 'r')
+        nnCode = nnfile.read()
+        nn_rw_iop = NNffbpAlphaTabFast(nnCode)
+        nnfile.close()
 
 def read_NN_input_ranges_fromFile(nnFilePath):
     """ Read input range for the forward NN """
@@ -313,25 +316,16 @@ def run_IdePix_processor(product, sensor):
     # invoke IdePix.
     # define valid pixel expression.
     idepixParameters = HashMap()
-    if product.getProductType() == 'CSV':
-        idepixParameters.put("computeCloudBuffer", 'false')
-        idepixParameters.put("computeCloudShadow", 'false')
-    else:
-        idepixParameters.put("computeCloudBuffer", 'true')
-        idepixParameters.put("cloudBufferWidth", '2')
-
-    idepixProducts = HashMap()
-    # idepixProducts.put("l1bProduct", product)
-    idepixProducts.put("sourceProduct", product)
+    idepixParameters.put("computeCloudBuffer", 'true')
+    idepixParameters.put("cloudBufferWidth", '2')
 
     idepix_product = None
 
     if sensor == 'OLCI':
-        #idepix_product = GPF.createProduct("Idepix.Sentinel3.Olci", idepixParameters, product) # SNAP v6
-        idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, idepixProducts) # SNAP v7
+        idepix_product = GPF.createProduct("Idepix.Olci", idepixParameters, product) # SNAP v7
     elif sensor == 'S2MSI':
         idepixParameters.put("computeCloudBufferForCloudAmbiguous", 'true')
-        idepix_product = GPF.createProduct("Idepix.S2", idepixParameters, idepixProducts) # SNAP v7
+        idepix_product = GPF.createProduct("Idepix.S2", idepixParameters, product) # SNAP v7
 
     return idepix_product
 
@@ -436,19 +430,81 @@ def check_valid_pixel_expression_L1(product, sensor, subset=None):
 
     return valid_pixel_flag
 
-def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, NNversion):
-    if NNversion == 'v2' or NNversion == 'v3':
-        return apply_forwardNN_net(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
-    elif NNversion == 'TF' or NNversion == 'TF_n':
-        return apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid)
 
-def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNversion, NNIOP=False):
-    if NNversion == 'v2' or NNversion == 'v3':
-        return apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP)
-    elif NNversion == 'TF' or NNversion =='TF_n':
-        return apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP)
+def apply_forwardNN_newNN_oldFormat(log_iop, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data, iband_forwardNN):
+    """
+        Apply the forwardNN: IOP to rhow (trained on c2rcc simulations)
+        input: numpy array log_iop, shape = (Npixels x log_iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
+                np.array raa, shape = (Npixels,) range: 0-180
+                np.array oza, shape = (Npixels,)
+                np.array sza, shape = (Npixels,);
+        returns: np.array rhow, shape = (Npixels, wavelengths)
+        valid ranges can be found at the beginning of the .net-file.
+        NN output for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+        NN output for S2MSI (6 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740
+    """
 
-def apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid):
+    # Initialise output
+    nBands = len(iband_forwardNN)
+    rhow = np.zeros((log_iop.shape[0], nBands)) + np.NaN
+
+    # Prepare the NN
+    NN_input = np.zeros((log_iop.shape[0], 5 + 3)) - 1.  # IOPS + angles CARE -1 used by default for IOP when niop < 5
+    for i in range(log_iop.shape[1]):
+        NN_input[:, i] = log_iop[:, i]
+    NN_input[:, 7] = np.cos(sun_zenith * np.pi / 180.)
+    NN_input[:, 6] = np.cos(view_zenith * np.pi / 180.)
+    NN_input[:, 5] = np.cos(diff_azimuth * np.pi / 180.)
+
+    for i in range(log_iop.shape[0]):
+        if valid_data[i]:
+            log_rw_nn2 = np.array(nn_iop_rw.calc(NN_input[i,:]), dtype=np.float32)
+            rhow[i, :] = np.exp(log_rw_nn2)
+
+    return rhow
+
+def apply_backwardNN_newNN_oldFormat(rhow, sun_zenith, view_zenith, diff_azimuth, sensor, valid_data):
+    """
+    Apply the backwardNN: rhow to IOP (trained on c2rcc simulations)
+    input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
+            np.array raa, shape = (Npixels,); range: 0-180
+            np.array oza, shape = (Npixels,)
+            np.array sza, shape = (Npixels,)
+    returns: np.array log_iop, shape = (Npixels x log_iop= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit))
+    valid ranges can be found at the beginning of the .net-file.
+    NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
+    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
+    """
+
+    # Initialise output
+    log_iop = np.zeros((rhow.shape[0], 5)) + np.NaN
+
+    # Prepare the NN, limit to rhow >0
+    rhow_pos = np.all(rhow > 0, axis=1)
+    valid2 = valid_data & rhow_pos
+    NN_input = np.zeros((rhow.shape[0], rhow.shape[1] + 3), dtype='float32') + np.NaN  # cos angles + log(rhow)
+    NN_input[:, 0] = np.cos(sun_zenith * np.pi / 180.)
+    NN_input[:, 1] = np.cos(view_zenith * np.pi / 180.)
+    NN_input[:, 2] = np.cos(diff_azimuth * np.pi / 180.)
+    NN_input[:, 3:] = np.log(rhow)
+
+    for i in range(rhow.shape[0]):
+        if valid2[i]:
+            # for j,var in enumerate(list(inputRange_backward.keys())[3:]):
+            #     # Threshold input rhow, in case of negative or too high value
+            #     j_glob = iband_backwardNN[j]
+            #     # inputRange=list(inputRange_backward.keys())[5:][j]
+            #     rhow_in = max(rhow[i, j_glob], np.exp(inputRange_backward[var][0]))
+            #     rhow_in = min(rhow_in, np.exp(inputRange_backward[var][1]))
+            #     if rhow_in != rhow[i, j_glob]:
+            #         FlagConstraintApplied[i] = 1
+            #     inputNN[j+5] = np.log(rhow_in)
+            log_iop[i,:] = np.array(nn_rw_iop.calc(NN_input[i, :]), dtype=np.float32) # output: log_apig, log_adet, log a_gelb, log_bpart, log_bwit
+
+    return log_iop
+
+
+def apply_forwardNN(log_iop, sun_zenith, view_zenith, diff_azimuth, valid):
     """
     Apply the forwardNN: IOP to rhow
     input: numpy array log_iop, shape = (Npixels x log_iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
@@ -456,9 +512,7 @@ def apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid):
             np.array oza, shape = (Npixels,)
             np.array raa, shape = (Npixels,); range: 0-180
     returns: np.array rhow, shape = (Npixels, wavelengths)
-
     valid ranges can be found at the beginning of the .net-file.
-
     NN output for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
     NN output for S2MSI (6 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740
     """
@@ -490,47 +544,7 @@ def apply_forwardNN_TF(log_iop, sun_zenith, view_zenith, diff_azimuth, valid):
 
     return rhow
 
-def apply_forwardNN_net(log_iop, sun_zenith, view_zenith, diff_azimuth, valid, T=15, S=35):
-    """
-    Apply the forwardNN: IOP to rhow
-    input: numpy array log_iop, shape = (Npixels x log_iops= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit)),
-            np.array sza, shape = (Npixels,)
-            np.array oza, shape = (Npixels,)
-            np.array raa, shape = (Npixels,); range: 0-180
-    returns: np.array rhow, shape = (Npixels, wavelengths)
-
-    valid ranges can be found at the beginning of the .net-file.
-
-    NN output for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
-    NN output for S2MSI (6 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740
-    """
-
-    # Initialise output
-    nBands = len(iband_forwardNN)
-    rhow = np.zeros((log_iop.shape[0], nBands)) + np.NaN
-
-    ###
-    # Launch the NN
-    # Important:
-    # OLCI input array has to be of size 10: [SZA, VZA, RAA, T, S, log_apig, log_adet, log a_gelb, log_bpart, log_bwit]
-    # S2 input array has to be of size 10 (same order as OLCI): [ sun_zeni, view_zeni, azi_diff, T, S, log_conc_apig, log_conc_adet,
-    # log_conc_agelb, log_conc_bpart, log_conc_bwit]
-    inputNN = np.zeros(10) -1. # care -1 used by default for de-activated IOPs when niop<5
-    inputNN[3] = T
-    inputNN[4] = S
-    for i in range(log_iop.shape[0]):
-        if valid[i]:
-            inputNN[0] = sun_zenith[i]
-            inputNN[1] = view_zenith[i]
-            inputNN[2] = diff_azimuth[i]
-            for j in range(log_iop.shape[1]):
-                inputNN[5+j] = log_iop[i, j]
-            log_rw = np.array(nn_forward.calc(inputNN), dtype=np.float32)
-            rhow[i, :] = np.exp(log_rw)
-
-    return rhow
-
-def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP):
+def apply_backwardNN(rhow, sun_zenith, view_zenith, diff_azimuth, valid):
     """
     Apply the backwardNN: rhow to IOP
     input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
@@ -538,10 +552,8 @@ def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIO
             np.array oza, shape = (Npixels,)
             np.array raa, shape = (Npixels,); range: 0-180
     returns: np.array log_iop, shape = (Npixels x log_iop= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit))
-
     T, S: currently constant #TODO take ECMWF temperature at sea surface?
     valid ranges can be found at the beginning of the .net-file.
-
     NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
     NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
     """
@@ -561,63 +573,13 @@ def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIO
 
     # Launch the NN
     if session is not None:
-        if NNIOP:
-            log_iop[valid2,:] = nn_backward_iop(NN_input).eval(session=session)
-        else:
-            log_iop[valid2,:] = nn_backward(NN_input).eval(session=session)
+        log_iop[valid2,:] = nn_backward(NN_input).eval(session=session)
     else:
-        if NNIOP:
-            log_iop[valid2,:] = nn_backward_iop(NN_input)
-        else:
-            log_iop[valid2,:] = nn_backward(NN_input)
+        log_iop[valid2,:] = nn_backward(NN_input)
 
     return log_iop
 
-def apply_backwardNN_net(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NNIOP, T=15, S=35):
-    """
-    Apply the backwardNN: rhow to IOP
-    input: numpy array rhow, shape = (Npixels x rhow = (log_rw_band1, log_rw_band2_.... )),
-            np.array sza, shape = (Npixels,)
-            np.array oza, shape = (Npixels,)
-            np.array raa, shape = (Npixels,); range: 0-180
-    returns: np.array log_iop, shape = (Npixels x log_iop= (log_apig, log_adet, log a_gelb, log_bpart, log_bwit))
 
-    T, S: currently constant #TODO take ECMWF temperature at sea surface?
-    valid ranges can be found at the beginning of the .net-file.
-
-    NN input for OLCI (12 bands): log_rw at lambda = 400, 412, 443, 489, 510, 560, 620, 665, 674, 681, 709, 754
-    NN input for S2MSI (8 bands): log_rw at lambda = 443, 490, 560, 665, 705, 740, 783, 865
-    """
-
-    # Initialise output
-    log_iop = np.zeros((rhow.shape[0], 5)) + np.NaN
-
-    # Prepare the NN, limit to rhow >0
-    rhow[rhow[:,11]<0,11]=0.000009075 # Hard-coded at 754 from input range of backward NN
-    rhow_pos = np.all(rhow>0, axis=1)
-    valid2 = valid & rhow_pos
-
-    ###
-    # Launch the NN
-    # Important:
-    # OLCI input array has to be of size 17: [SZA, VZA, RAA, T, S, 12x log rhow]
-    # S2 input array has to be of size 11 : [ sun_zeni, view_zeni, azi_diff, T, S, 6x log rhow]
-    inputNN = np.zeros(5+rhow.shape[1])
-    inputNN[3] = T
-    inputNN[4] = S
-
-    for i in range(rhow.shape[0]):
-        if valid2[i]:
-            inputNN[0] = sun_zenith[i]
-            inputNN[1] = view_zenith[i]
-            inputNN[2] = diff_azimuth[i]
-            inputNN[5:] = np.log(rhow[i, :])
-            if NNIOP:
-                log_iop[i, :] = np.array(nn_backward_iop.calc(inputNN), dtype=np.float32)
-            else:
-                log_iop[i, :] = np.array(nn_backward.calc(inputNN), dtype=np.float32)
-
-    return log_iop
 
 def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_dict, scalar_dict=None,
                               copyOriginalProduct=False, addname='',
@@ -816,24 +778,22 @@ def check_and_constrain_iop(log_iop, inputRange):
     return log_iop
 
 
-#def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
-def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputSpectral=None,
-                outputScalar=None, correction='HYGEOS', copyOriginalProduct=False,
-                atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
-              runAC=True, NNversion='TF', NNIOPversion='v2'):
+def baltic_AC(scene_path='', filename='', outpath='', sensor='', subset=None, addName = '', outputSpectral=None,
+              outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
+              atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False, NNversion='v3'):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
     """
-    print ('starting baltic_op...')
+
 
     # Read the NNs
-    read_NNs(sensor, NNversion, NNIOPversion)
+    read_NNs(sensor, NNversion)
 
     # Get sensor & AC bands
-    global bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs
+    global bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_normNN, bands_abs
     global iband_corr, iband_chi2, iband_forwardNN, iband_backwardNN, iband_abs
-    bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_abs = get_bands.main(sensor,"dummy")
+    bands_sat, bands_rw, bands_corr, bands_chi2, bands_forwardNN, bands_backwardNN, bands_normNN, bands_abs = get_bands.main(sensor,"dummy")
     nbands = len(bands_sat)
     iband_corr = np.searchsorted(bands_sat, bands_corr)
     iband_chi2 = np.searchsorted(bands_sat, bands_chi2)
@@ -842,11 +802,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     iband_abs = np.searchsorted(bands_sat, bands_abs)
 
     # Initialising a product for Reading with snappy
-    #product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
-    product = sourceProduct
-
-    if sensor=='OLCI' and product.getProductType()=='CSV':
-        product.setProductType('OL_1_')
+    product = snp.ProductIO.readProduct(os.path.join(scene_path, filename))
 
     # Resampling S2MSI to 60m
     if sensor == "S2MSI" and product.isMultiSize():
@@ -876,19 +832,9 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     print("%d valid pixels on %d"%(np.sum(valid), len(valid)))
 
     if add_Idepix_Flags:
-        if product.getBand('quality_flags') is None: #Idepix needs a band of this name to run. L1-flags are evaluated st a different step, so values can be zero here.
-            band = product.addBand('quality_flags', ProductData.TYPE_INT32)
-            band.setNoDataValue(np.nan)
-            band.setNoDataValueUsed(True)
-            sourceData = np.zeros((height, width), dtype='uint32')
-            band.setRasterData(ProductData.createInstance(sourceData))
-
         idepixProduct = run_IdePix_processor(product, sensor)
-
         validIdepix = check_valid_pixel_expression_Idepix(idepixProduct, sensor, subset=subset)
-        print('Idepix valid', np.sum(validIdepix))
         valid = np.logical_and(valid, validIdepix)
-        print('total valid', np.sum(valid))
     else:
         idepixProduct=None
 
@@ -925,7 +871,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     elif sensor == 'S2MSI':
         bandNames = list(product.getBandNames())
         ## only for match-up data with included meteorology.
-        if ('pressure' in bandNames) and ('ozone' in bandNames) and ('tcwv' in bandNames)\
+        if ('pressure' in bandNames) and ('ozone' in bandNames) and ('tcwv' in bandNames) \
                 and ('wind_u' in bandNames) and ('wind_v' in bandNames):
             pressure = get_band_or_tiePointGrid(product, 'pressure', reshape=False, subset=subset)
             ozone = get_band_or_tiePointGrid(product, 'ozone', reshape=False, subset=subset)
@@ -965,7 +911,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     print("Pre-corrections")
     # Gaseous correction
     rho_ng = gas_correction(rho_toa, valid, latitude, longitude, yday, sza, oza, raa, wavelength,
-            pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
+                            pressure, ozone, tcwv, adf_ppp, adf_clp, sensor)
 
     # Vicarious calibration
     #rho_ng = vicarious_calibration(rho_ng, valid, adf_acp, sensor)
@@ -985,44 +931,34 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
 
     elif correction == 'HYGEOS':
         # Glint + Rayleigh correction
-        #rho_r, rho_molgli, rho_rc, tau_r = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-        #                                                             pressure, windm, LUT_HYGEOS, altitude)
-        rho_rc = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
-                                                                    pressure, windm, LUT_HYGEOS, altitude)
-    if np.sum(valid) != 0 and runAC and False:
-        # Atmospheric model
-        print("Compute atmospheric matrices")
-        Aatm, Aatm_inv = polymer_matrix(bands_sat, bands_corr, valid, rho_g, rho_r, sza, oza, wavelength)
+        rho_r, rho_molgli, rho_rc, tau_r, tau_r_mono = Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength,
+                                                                                 pressure, windm, LUT_HYGEOS, altitude)
 
-        # Core AC
-        print("Inversion")
-        rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow = AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion)
-        print("")
+    # Atmospheric model
+    print("Compute atmospheric matrices")
+    Aatm, Aatm_inv = polymer_matrix(bands_sat, bands_corr, valid, rho_g, rho_r, sza, oza, wavelength)
 
-        # Set absorption band to NaN
-        rho_ag[:,iband_abs] = np.NaN
-        rho_ag_mod[:,iband_abs] = np.NaN
-        rho_rc[:,iband_abs] = np.NaN
-        rho_w[:,iband_abs] = np.NaN
-        unc_rhow[:,iband_abs] = np.NaN
+    # Core AC
+    print("Inversion")
+    rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2 = AC_backward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv)
+    print("")
 
-        # Apply normalisation
-        print("Normalize spectra")
-        angle0 = np.zeros(npix)
-        rho_wn = np.zeros((npix, nbands)) + np.nan
-        rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid, NNversion)/rho_wmod[:,iband_forwardNN] * rho_w[:,iband_forwardNN]
-    else:
-        rho_w = np.zeros((npix, nbands)) + np.nan
-        rho_wn = np.zeros((npix, nbands)) + np.nan
-        rho_wmod = np.zeros((npix, nbands)) + np.nan
-        log_iop = np.zeros((npix, niop)) + np.nan
-        rho_ag = np.zeros((npix, nbands)) + np.nan
-        rho_ag_mod = np.zeros((npix, nbands)) + np.nan
-        l2flags = np.zeros(npix) + np.nan
-        chi2 = np.zeros(npix) + np.nan
-        unc_rhow = np.zeros((npix, nbands)) + np.nan
+    # Set absorption band to NaN
+    rho_ag[:,iband_abs] = np.NaN
+    rho_ag_mod[:,iband_abs] = np.NaN
+    rho_rc[:,iband_abs] = np.NaN
+    rho_w[:,iband_abs] = np.NaN
+
+    # Apply normalisation
+    print("Normalize spectra")
+    angle0 = np.zeros(npix)
+    rho_wn = np.zeros((npix, nbands)) + np.nan
+    rho_wn[:,iband_forwardNN] = apply_forwardNN(log_iop, angle0, angle0, angle0, valid)
 
     #l2flags[np.array(oorFlagArray==1)] += 2**1 TODO flags?
+
+    # TODO uncertainties
+    # unc_rhow =
 
     ###
     # Writing a product
@@ -1030,7 +966,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     #        scalar_dict holds the scalar fields
     ###
     print("Write output")
-    #baltic__product_path = os.path.join(outpath,'baltic_' + filename)
+    baltic__product_path = os.path.join(outpath,'baltic_' + filename)
     if outputSpectral:
         spectral_dict = {}
         for field in outputSpectral.keys():
@@ -1044,36 +980,28 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     else: scalar_dict = None
 
     if add_c2rccIOPs:
-        # Apply NNIOP to compute final IOPs
-        # Care that iband_backwardNN is for NNversion; TODO in a more generic way, ideally with bands given in the NN
-        if NNIOPversion == 'TF':
-            iband_backwardNNIOP = iband_backwardNN
-        elif NNIOPversion == 'v2' or NNIOPversion == 'v3':
-            iband_backwardNNIOP = iband_backwardNN[0:12]
-        log_iop2 = apply_backwardNN(rho_w[:, iband_backwardNNIOP], sza, oza, nn_raa, valid, NNIOPversion, NNIOP=True)
+        log_iop2 = apply_backwardNN(rho_w[:,iband_backwardNN], sza, oza, nn_raa, valid)
         iop_names = ['apig', 'adet', 'a_gelb', 'bpart', 'bwit']
         if scalar_dict is None:
             scalar_dict = {}
         for i, field in enumerate(iop_names):
             scalar_dict[field] = {'data': np.exp(log_iop2[:,i])}
 
-
-    targetProduct = final_setup_BalticProduct(product, None, sensor, spectral_dict, scalar_dict,
-                             copyOriginalProduct,  addName,
+    write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dict, scalar_dict,
+                             copyOriginalProduct, outputProductFormat, addName,
                              add_Idepix_Flags=add_Idepix_Flags, idepixProduct=idepixProduct,
                              add_L2Flags=add_L2Flags, L2FlagArray=l2flags,
-                             add_Geometry=True)
+                             add_Geometry=True,subset=subset)
 
+    product.closeProductReader()
 
     # Close TF session
     if session is not None:
         session.close()
-    return targetProduct
 
 def Rmod_MSA(wav, rho_ag, alpha, lambda_l, wav0=865):
     '''
     MSA analytical aerosol reflectance model
-
     rho_a in [-0.03, 0.15]
     alpha in [-3., 0.2]
     lamnbda_l in [300, 1400]
@@ -1091,8 +1019,8 @@ def Jac_MSA(wav, rho_ag, alpha, lambda_l, wav0=865):
 
     j1 = pow_alpha*(1+ k *pow_alpha)/(1+k)
     j2 = rho_ag * pow_alpha * ( np.log(wav/wav0)*(1+k*pow_alpha)/(1+k) +
-            np.log(wav/lambda_l)*f_lambda/(1+k) -
-            np.log(wav0/lambda_l)*k/(1+k)*(1+f_lambda)/(1+k))
+                                np.log(wav/lambda_l)*f_lambda/(1+k) -
+                                np.log(wav0/lambda_l)*k/(1+k)*(1+f_lambda)/(1+k))
 
     j3 = rho_ag * pow_alpha * alpha/lambda_l *(-f_lambda*(1+k) + (1+f_lambda)*k)/((1+k)*(1+k))
 
@@ -1118,44 +1046,37 @@ def spectral_MSA(wav, Rprime, x0=[0.0, -1., 500.], wav0=865):
 
     return res
 
-def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv, NNversion):
+def AC_backward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm_inv):
     global n_evaluation
     n_evaluation = 0
 
     # Reference band
-    wav_ref = float(bands_forwardNN[-1])
-    iband_ref = iband_forwardNN[-1]
+    wav_ref = float(bands_forwardNN[-3])
+    iband_ref = iband_forwardNN[-3]
 
     # Define dimension
-    n_dim = niop
+    n_dim = 3
     n_vertex = n_dim + 1
     nbands = len(bands_sat)
     n_pix  = np.count_nonzero(valid) # Apply NM only on valid pixel
     range_pix = np.arange(n_pix)
-    range_keep = np.tile(range_pix,(n_vertex-1,1)).transpose()
 
-    iter_max = 10
-    n_iter_NM_max = 30
+    iter_max = 10#20
+    n_iter_NM_max = 20#20
     n_iter_NM = 0
     simplex = np.ndarray((n_pix, n_vertex, n_dim))
-    chi2_NM = np.ndarray((n_pix, n_vertex))
-    rho_w_NM = np.ndarray((n_pix, n_vertex, nbands))
-    rho_wmod_NM = np.ndarray((n_pix, n_vertex, nbands))
-    rho_ag_NM = np.ndarray((n_pix, n_vertex, nbands))
-    rho_ag_mod_NM = np.ndarray((n_pix, n_vertex, nbands))
+    chi2 = np.ndarray((n_pix, n_vertex))
 
-    n_reflection = np.zeros(n_pix)
-    n_expansion = np.zeros(n_pix)
-    n_contraction =np.zeros(n_pix)
-    n_reduction = np.zeros(n_pix)
-    i_reduction = np.zeros(n_pix, dtype=bool)
-
-    # Start NM - Define first vertice xbest of the simplex
-    log_iop = apply_backwardNN(rho_rc[:,iband_backwardNN], sza, oza, nn_raa, valid, NNversion)
-    xbest = log_iop[valid,0:niop]
+    # Start NM - Define first simplex[n_pix, n_vertex, n_dim]
+    #x0 = np.zeros(3)
+    #xbest = np.tile(x0,(n_pix,1))
+    rho_ag = np.zeros((n_pix, nbands)) + np.NaN
+    for ipix in range(n_pix):
+        rho_ag[ipix,:] = Rmod_MSA(wavelength[valid][ipix], rho_rc[valid][ipix,iband_ref]*0.5, -1, 500., wav0=wav_ref)
+    xbest = np.einsum('...ij,...j->...i', Aatm_inv[valid], rho_ag[:, iband_corr])
 
     while n_iter_NM < n_iter_NM_max:
-        print("#### Iter NM %d"%n_iter_NM)
+        print ("#### Iter NM %d")%n_iter_NM
 
         # Update first simplex during overall NM iteration
         if n_iter_NM >=0:
@@ -1167,63 +1088,62 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
 
         # Evaluate function at first simplex
         for iv in range(n_vertex):
-            #simplex[:,iv] = check_and_constrain_iop(simplex[:,iv], inputRange_forward)
-            chi2_NM[:,iv], rho_w_NM[:,iv], rho_wmod_NM[:,iv], rho_ag_NM[:,iv], rho_ag_mod_NM[:,iv] = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+            chi2[:,iv], tmp, tmp, tmp, tmp, tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm)
 
         # Loop
         n_iter = 0
-        n_reflection[:] = 0
-        n_expansion[:] = 0
-        n_contraction[:] = 0
-        n_reduction[:] = 0
+        n_reflection = np.zeros(n_pix)
+        n_expansion = np.zeros(n_pix)
+        n_contraction =np.zeros(n_pix)
+        n_reduction = np.zeros(n_pix)
+        i_reduction = np.zeros(n_pix, dtype=bool)
+        diam = np.zeros(n_pix)
+        yr = np.zeros(n_pix)
+        ynew = np.zeros(n_pix)
         while n_iter<iter_max:
 
-            print("Iter %d"%n_iter)
+            print ("Iter %d")%n_iter
             # Init action
             i_reduction[:] = False
 
             # Compute size of simplex (size of diam is n_pix)
             diam = diameter(simplex)
             if max(diam)< 1E-4:
-                print("Diameter=%f -- break"%max(diam))
+                print ("Diameter=%f -- break")%max(diam)
                 break
 
             # Order vertices
-            order = np.argsort(chi2_NM, axis=1)
+            order = np.argsort(chi2, axis=1)
             ibest = order[:,0] # best
             isecond = order[:,-2] # second to worse
             iworse = order[:,-1] # worse
             xbest = simplex[range_pix,ibest]
             xworse = simplex[range_pix,iworse]
             xnew = simplex[range_pix,ibest] # Values re-evaluated for expansion or contraction, but need realistic dummy for other
-            ybest = chi2_NM[range_pix,ibest]
-            ysecond = chi2_NM[range_pix,isecond]
-            yworse = chi2_NM[range_pix,iworse]
+            ybest = chi2[range_pix,ibest]
+            ysecond = chi2[range_pix,isecond]
+            yworse = chi2[range_pix,iworse]
 
             # Check convergence
             if max(ybest) < 1.E-6:
-                print("Max(ybest)=%f -- break"%max(ybest))
+                print ("Max(ybest)=%f -- break")%max(ybest)
                 break
 
             # Compute centroid
             ikeep = order[:,:-1]
+            range_keep = np.tile(range_pix,(n_vertex-1,1)).transpose()
             xc = simplex[range_keep,ikeep].mean(1)
 
             # Reflect worse vertex
             xr = xc + (xc-xworse)
             # Evaluate reflection
-            #xr = check_and_constrain_iop(xr, inputRange_forward)
-            yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+            yr, tmp, tmp, tmp, tmp, tmp = evaluate_chi2(xr, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm)
 
             # Replace vertex
             i_reflection = (ybest <= yr) & (yr <  ysecond)
             if i_reflection.any():
                 simplex[range_pix[i_reflection],iworse[i_reflection]] = xr[i_reflection]
-                chi2_NM[range_pix[i_reflection],iworse[i_reflection]] = yr[i_reflection]
-                rho_w_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_w_r[i_reflection]
-                rho_wmod_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_wmod_r[i_reflection]
-                rho_ag_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_ag_r[i_reflection]
-                rho_ag_mod_NM[range_pix[i_reflection],iworse[i_reflection]] = rho_ag_mod_r[i_reflection]
+                chi2[range_pix[i_reflection],iworse[i_reflection]] = yr[i_reflection]
                 n_reflection[i_reflection] += 1
 
             # Dectect expansion
@@ -1246,40 +1166,27 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
 
             # Evaluate new vertex for expansion or contraction
             if i_expansion.any() or i_contraction.any():
-                #xnew = check_and_constrain_iop(xnew, inputRange_forward)
-                ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
+                ynew, tmp, tmp, tmp, tmp, tmp = evaluate_chi2(xnew, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm)
 
             # Apply expansion
             if i_expansion.any():
                 i_e = i_expansion & (ynew <= yr)
                 if i_e.any():
                     simplex[range_pix[i_e],iworse[i_e]] = xnew[i_e]
-                    chi2_NM[range_pix[i_e],iworse[i_e]] = ynew[i_e]
-                    rho_w_NM[range_pix[i_e],iworse[i_e]] = rho_w_new[i_e]
-                    rho_wmod_NM[range_pix[i_e],iworse[i_e]] = rho_wmod_new[i_e]
-                    rho_ag_NM[range_pix[i_e],iworse[i_e]] = rho_ag_new[i_e]
-                    rho_ag_mod_NM[range_pix[i_e],iworse[i_e]] = rho_ag_mod_new[i_e]
+                    chi2[range_pix[i_e],iworse[i_e]] = ynew[i_e]
                 i_e = i_expansion & (ynew > yr)
                 if i_e.any():
                     simplex[range_pix[i_e],iworse[i_e]] = xr[i_e]
-                    chi2_NM[range_pix[i_e],iworse[i_e]] = yr[i_e]
-                    rho_w_NM[range_pix[i_e],iworse[i_e]] = rho_w_r[i_e]
-                    rho_wmod_NM[range_pix[i_e],iworse[i_e]] = rho_wmod_r[i_e]
-                    rho_ag_NM[range_pix[i_e],iworse[i_e]] = rho_ag_r[i_e]
-                    rho_ag_mod_NM[range_pix[i_e],iworse[i_e]] = rho_ag_mod_r[i_e]
+                    chi2[range_pix[i_e],iworse[i_e]] = yr[i_e]
                 n_expansion[i_expansion] += 1
 
-            # Apply contraction
+                # Apply contraction
             if i_contraction.any():
                 if i_ce.any():
                     ii = i_ce & (ynew <= yr)
                     if ii.any():
                         simplex[range_pix[ii],iworse[ii]] = xnew[ii]
-                        chi2_NM[range_pix[ii],iworse[ii]] = ynew[ii]
-                        rho_w_NM[range_pix[ii],iworse[ii]] = rho_w_new[ii]
-                        rho_wmod_NM[range_pix[ii],iworse[ii]] = rho_wmod_new[ii]
-                        rho_ag_NM[range_pix[ii],iworse[ii]] = rho_ag_new[ii]
-                        rho_ag_mod_NM[range_pix[ii],iworse[ii]] = rho_ag_mod_new[ii]
+                        chi2[range_pix[ii],iworse[ii]] = ynew[ii]
                         n_contraction[ii] += 1
                     ii = i_ce & (ynew > yr)
                     if ii.any():
@@ -1288,11 +1195,7 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                     ii = i_ci & (ynew < yworse)
                     if ii.any():
                         simplex[range_pix[ii],iworse[ii]] = xnew[ii]
-                        chi2_NM[range_pix[ii],iworse[ii]] = ynew[ii]
-                        rho_w_NM[range_pix[ii],iworse[ii]] = rho_w_new[ii]
-                        rho_wmod_NM[range_pix[ii],iworse[ii]] = rho_wmod_new[ii]
-                        rho_ag_NM[range_pix[ii],iworse[ii]] = rho_ag_new[ii]
-                        rho_ag_mod_NM[range_pix[ii],iworse[ii]] = rho_ag_mod_new[ii]
+                        chi2[range_pix[ii],iworse[ii]] = ynew[ii]
                         n_contraction[ii] += 1
                     ii = i_ci & (ynew >= yworse)
                     if ii.any():
@@ -1305,44 +1208,30 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
                     simplex[i_reduction,iv] = simplex[i_reduction,ibest[i_reduction]] + 0.5*(simplex[i_reduction,iv]-simplex[i_reduction,ibest[i_reduction]])
                 # Evaluate reduction
                 for iv in range(n_vertex):
-                    #simplex[i_reduction, iv] = check_and_constrain_iop(simplex[i_reduction, iv], inputRange_forward)
-                    y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion)
-                    chi2_NM[range_pix[i_reduction], iv] = y[i_reduction] # Care y defined only for dopix=i_reduction
-                    rho_w_NM[range_pix[i_reduction], iv] = rho_w_tmp[i_reduction]
-                    rho_wmod_NM[range_pix[i_reduction], iv] = rho_wmod_tmp[i_reduction]
-                    rho_ag_NM[range_pix[i_reduction], iv] = rho_ag_tmp[i_reduction]
-                    rho_ag_mod_NM[range_pix[i_reduction], iv] = rho_ag_mod_tmp[i_reduction]
+                    y, tmp, tmp, tmp, tmp, tmp = evaluate_chi2(simplex[:,iv], rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm)
+                    chi2[range_pix[i_reduction], iv] = y[i_reduction] # Care y defined only for dopix=i_reduction
                 n_reduction[i_reduction] += 1
-
-
-            # Release some memory
-            del xworse, xnew, xc, xr
-            del yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r
-            del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
-            if i_reduction.any():
-                del y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp
 
             n_iter = n_iter + 1
 
         # End of algorithm
-        print("Niter=",n_iter)
-        print("Reflection=",n_reflection[0:10], np.count_nonzero(n_reflection))
-        print("Expansion=",n_expansion[0:10], np.count_nonzero(n_expansion))
-        print("Contraction=",n_contraction[0:10],  np.count_nonzero(n_contraction))
-        print("Reduction=",n_reduction[0:10], np.count_nonzero(n_reduction))
-        print("Evaluation=",n_evaluation)
+        print ("Niter=",n_iter)
+        print ("Reflection=",n_reflection[0:10], np.count_nonzero(n_reflection))
+        print ("Expansion=",n_expansion[0:10], np.count_nonzero(n_expansion))
+        print ("Contraction=",n_contraction[0:10],  np.count_nonzero(n_contraction))
+        print ("Reduction=",n_reduction[0:10], np.count_nonzero(n_reduction))
+        print ("Evaluation=",n_evaluation)
 
         # Identify best vertex
-        print("Identify best vertex")
-        order = np.argsort(chi2_NM,axis=1)
+        print ("Identify best vertex")
+        order = np.argsort(chi2,axis=1)
         ibest = order[:,0] # best
         xbest = simplex[range_pix,ibest]
-        #xbest = check_and_constrain_iop(xbest, inputRange_forward)
 
         n_iter_NM = n_iter_NM + 1
 
     # Final evaluation at best vertex
-    print( "Evaluate best vertex")
+    print ("Evaluate best vertex")
     n_pix_all = oza.shape[0]
     chi2 = np.zeros(n_pix_all) + np.NaN
     rho_w = np.zeros((n_pix_all, nbands)) + np.NaN
@@ -1350,50 +1239,14 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     rho_ag = np.zeros((n_pix_all, nbands)) + np.NaN
     rho_ag_mod = np.zeros((n_pix_all, nbands)) + np.NaN
     log_iop = np.zeros((n_pix_all, niop)) + np.NaN
-
-    chi2[valid] = chi2_NM[range_pix,ibest]
-    rho_w[valid] = rho_w_NM[range_pix,ibest]
-    rho_wmod[valid] = rho_wmod_NM[range_pix,ibest]
-    rho_ag[valid] = rho_ag_NM[range_pix,ibest]
-    rho_ag_mod[valid] = rho_ag_mod_NM[range_pix,ibest]
-    log_iop[valid] = xbest
-
-    # Compute uncertainty on valid pixels, all bands
-    print("Compute uncertainty")
-    nband_chi2 = len(iband_chi2)
-    # Compute Jacobian J = d rhow_mod/ d xw from simplex evaluation
-    DX = np.zeros((n_pix, n_vertex - 1, n_dim))
-    Drho_wmod = np.zeros((n_pix, n_vertex - 1, nbands))
-    for v in range(1,n_vertex):
-        DX[:,v-1] = simplex[range_pix, order[:,v]] - simplex[range_pix, order[:,0]]
-        Drho_wmod[:,v-1] = rho_wmod_NM[range_pix, order[:,v]] - rho_wmod_NM[range_pix, order[:,0]]
-    DXinv = np.linalg.inv(DX)
-    J = np.zeros((n_pix, nband_chi2, niop))
-    for k,ik in enumerate(iband_chi2):
-        J[:,k] = np.einsum('...ij,...j->...i', DXinv, Drho_wmod[:,:,ik])
-    # Compute d rhorc_mod / d xw
-    Matm = np.einsum('...ik,...kj->...ij', Aatm[valid], Aatm_inv[valid])
-    TJ = np.einsum('...i,...ij->...ij', td[valid][:, iband_chi2], J)
-    id_all = np.tile(np.identity(nband_chi2), (n_pix,1)).reshape(n_pix,nband_chi2,nband_chi2)
-    drho_rcmod_dxw =  np.einsum('...ik,...kj->...ij', id_all - Matm[:,iband_chi2,:], TJ)
-    # Compute variance-covariance matrix C_xw
-    C_xw = np.linalg.inv(np.matmul(drho_rcmod_dxw.transpose(0,2,1),drho_rcmod_dxw))
-    C_xw = np.einsum('i,ijk->ijk', chi2[valid], C_xw) # scaling with reduced chi2 for non-weighted minimization
-    # Compute d rhow / d xw
-    TinvMatm = np.einsum('...i,...ij->...ij', 1./td[valid], Matm)
-    d_rhow_dxw = np.matmul(TinvMatm, TJ)
-    # Compute variance-covariance matrix C_rhow
-    C_rhow = np.matmul(d_rhow_dxw, np.matmul(C_xw, d_rhow_dxw.transpose(0,2,1)))
-    # Return root square diagonal term
-    unc_rhow = np.zeros((n_pix_all, nbands)) + np.NaN
-    unc_rhow[valid] = np.sqrt(np.diagonal(C_rhow, axis1=1, axis2=2))
+    chi2[valid], rho_w[valid], rho_wmod[valid], rho_ag[valid], rho_ag_mod[valid], log_iop[valid] = evaluate_chi2(xbest, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm)
 
     l2flags = np.zeros(n_pix_all)
     # TODO define success =
     #if not success:
     #    l2flags[ipix] += 2 ** 2
 
-    return rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2, unc_rhow
+    return rho_w, rho_wmod, log_iop, rho_ag, rho_ag_mod, l2flags, chi2
 
 def diameter(simplex):
 
@@ -1405,7 +1258,7 @@ def diameter(simplex):
             d = np.amax((d,dij),axis=0)
     return d
 
-def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, NNversion, dopix=np.array(False)):
+def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza, nn_raa, valid, Aatm_inv, Aatm, dopix=np.array(False)):
     global n_evaluation
     n_evaluation += 1
 
@@ -1418,40 +1271,28 @@ def evaluate_chi2(vertices, rho_rc, td, wavelength, wav_ref, iband_ref, sza, oza
     else:
         n_pix = vertices.shape[0]
         index = range(n_pix)
-    all_valid = np.ones(n_pix, dtype=bool)
-
-    # Compute rho_wmod
-    # NN
-    # Check iop range and apply constraints to forwardNN input range
-    #log_iop = check_and_constrain_iop(vertices[index], inputRange_forward) # Don't apply it, gives worse results
-    log_iop = vertices[index]
-    rho_wmod = np.zeros((n_pix, nbands)) + np.NaN
-    rho_wmod[:,iband_forwardNN] = apply_forwardNN(log_iop, sza[valid][index], oza[valid][index], nn_raa[valid][index], all_valid, NNversion)
-
-    # Evaluate rho_ag
-    rho_ag = rho_rc[valid][index] - td[valid][index]*rho_wmod
-
-    # Fit rho_ag_mod
-    x_atm = np.einsum('...ij,...j->...i', Aatm_inv[valid][index], rho_ag[:,iband_corr])
-    x_atm_min = [-0.07,-0.01,-0.7]
-    x_atm_max = [0.1,0.1,0.34]
-    for i in range(3):
-        x_atm[x_atm[:,i]<x_atm_min[i],i] = x_atm_min[i]
-        x_atm[x_atm[:,i]>x_atm_max[i],i] = x_atm_max[i]
+    #all_valid = np.ones(n_pix, dtype=bool)
 
     # Compute rho_ag_mod
     rho_ag_mod = np.zeros((n_pix, nbands))# + np.NaN
-    rho_ag_mod[:, :] = np.einsum('...ij,...j->...i', Aatm[valid][index], x_atm)
+    #for ipix in range(n_pix):
+    #    rho_ag_mod[ipix,:] = Rmod_MSA(wavelength[valid][index][ipix], *(vertices[index][ipix]), wav0=wav_ref)
+    rho_ag_mod[:, :] = np.einsum('...ij,...j->...i', Aatm[valid][index], vertices[index])
 
-    # Compute rho_w
+    # Fit rhow_mod
+    rho_wmod = np.zeros((n_pix, nbands)) + np.NaN
     rho_w = (rho_rc[valid][index] - rho_ag_mod)/td[valid][index]
+    log_iop = apply_backwardNN(rho_w[:,iband_backwardNN], sza[valid][index], oza[valid][index], nn_raa[valid][index], valid[valid][index])
+    # Check iop range and apply constraints to forwardNN input range
+    #log_iop = check_and_constrain_iop(log_iop, inputRange_forward) # TODO to be applied after backwardNN ?
+    rho_wmod[:,iband_forwardNN] = apply_forwardNN(log_iop, sza[valid][index], oza[valid][index], nn_raa[valid][index], valid[valid][index])
+
+    # Evaluate rho_ag (not used)
+    rho_ag = rho_rc[valid][index] - td[valid][index]*rho_wmod
 
     # Compute chi2
-    chi2 = np.sum((td[valid][index][:, iband_chi2]*(rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2]))**2, axis=1)
-    #chi2 = np.sum((rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2])**2, axis=1)
-    #chi2 = np.sum(((rho_w[:,iband_chi2] - rho_wmod[:,iband_chi2])/rho_wmod[:,iband_chi2])**2, axis=1)
-    # Normalise chi2 to number of degree of freedom (reduced chi-square)
-    chi2 /= (len(iband_chi2) - vertices.shape[1])
+    chi2 = np.sum((rho_wmod[:,iband_chi2]-rho_w[:,iband_chi2])**2, axis=1)
 
-    return chi2, rho_w, rho_wmod, rho_ag, rho_ag_mod
+    chi2[np.any(np.isnan(log_iop),axis=1)] = 100.
 
+    return chi2, rho_w, rho_wmod, rho_ag, rho_ag_mod, log_iop
