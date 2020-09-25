@@ -71,6 +71,7 @@ def rod_SRF(bandNo, co2=360., latitude=None, altitude=None, pressure=None, file_
 
     SRF_lam = pd.read_csv(file_SRF_wavelength, sep='\t', header=None)
     SRF_weight = pd.read_csv(file_SRF_weights, sep='\t', header=None)
+
     ## wavelength dependent: scattering cross-section sigma!
     # constants describing the state of the atmosphere and which we don't know; better values may be used if known
     CO2 = co2 * 1E-6  # 3.6E-4  # CO2 concentration at pixel; typical values are 300 to 360 ppm; here: parts per volumn

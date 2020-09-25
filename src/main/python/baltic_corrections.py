@@ -62,7 +62,7 @@ def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wav
         idiff = i1 != i2
         if np.any(idiff):
             p709[idiff] = (wav[idiff] - adf_ppp.lambda_h2o_709[i1][idiff]) \
-            / (adf_ppp.lambda_h2o_709[i2][idiff] - adf_ppp.lambda_h2o_709[i1][idiff])
+                          / (adf_ppp.lambda_h2o_709[i2][idiff] - adf_ppp.lambda_h2o_709[i1][idiff])
         tH2O_1 = 0.
         tH2O_2 = 0.
         for iw in range(adf_ppp.h2o_max_bins_709):
@@ -203,6 +203,8 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         #tau_ray2[:,i] = rod(wavelength[:,i]/1000., co2, latitude, altitude, pressure)
         tau_ray[:,i], lam_SRF = rod_SRF(i, co2, latitude, altitude, pressure, file_SRF_wavelength, file_SRF_weights)
 
+        #print(i, np.nanmedian((tau_ray2[:, i] - tau_ray[:, i]) / tau_ray[:, i] * 100.))
+
 
     # Compute rho_molgli (dim_mu, dim_phi, dim_mu, dim_tauray, dim_wind)
     axes = [LUT.muv, LUT.raa, LUT.mus, LUT.tau, LUT.wind]
@@ -221,11 +223,11 @@ def Rmolgli_correction_Hygeos(rho_ng, valid, latitude, sza, oza, raa, wavelength
         x = [np.cos(np.radians(oza)), raa, np.cos(np.radians(sza)), tau_ray[:,i]]
         rho_r[:,i] = nlinear(x, LUT.rho_mol, axes) # Rayleigh
 
-    return rho_r, rho_molgli, rho_rc, tau_ray, tau_ray2
+    return rho_r, rho_molgli, rho_rc, tau_ray
 
 def vicarious_calibration(rho_ng, valid, adf_acp, sensor):
     """
-    Apply SVC gains 
+    Apply SVC gains
     """
     # TODO compute dedicated gains for Baltic+ AC
     # TODO handle S2
@@ -236,4 +238,3 @@ def vicarious_calibration(rho_ng, valid, adf_acp, sensor):
             rho_ng_prime[:,ib] *= adf_acp.vicarious_gain[band]
 
     return rho_ng_prime
-

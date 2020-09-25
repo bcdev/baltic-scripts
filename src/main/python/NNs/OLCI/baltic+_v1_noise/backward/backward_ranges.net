@@ -1,0 +1,28 @@
+the net has 19 inputs:
+input  1 is cos_sun_zenith in [0.25881895, 1.0]
+input  2 is cos_view_zenith in [0.49999997, 1.0]
+input  3 is cos_diff_azimuth in [-1.0, 1.0]
+input  4 is log_rw_400 in [-10.978967, -2.9401438]
+input  5 is log_rw_412 in [-10.918494, -2.865406]
+input  6 is log_rw_443 in [-10.729938, -2.6768422]
+input  7 is log_rw_490 in [-10.401397, -2.4356594]
+input  8 is log_rw_510 in [-10.24036, -2.3736515]
+input  9 is log_rw_560 in [-9.836016, -2.126114]
+input 10 is log_rw_620 in [-9.549877, -2.1759524]
+input 11 is log_rw_665 in [-9.494695, -2.2652893]
+input 12 is log_rw_674 in [-9.446569, -1.7287847]
+input 13 is log_rw_681 in [-9.4221735, -0.07688104]
+input 14 is log_rw_709 in [-9.830423, -2.3611681]
+input 15 is log_rw_754 in [-10.972347, -2.9879625]
+input 16 is log_rw_779 in [-10.91354, -2.92957]
+input 17 is log_rw_865 in [-11.847559, -3.5329018]
+input 18 is log_rw_885 in [-12.037343, -3.678929]
+input 19 is log_rw_1020 in [-13.86145, -5.579885]
+
+the net has 5 outputs:
+output  1 is log_apig in [-4.482068, 0.82549036]
+output  2 is log_adet in [-4.828189, 1.3987169]
+output  3 is log_agelb in [-2.5902672, 1.9878744]
+output  4 is log_bpart in [-2.690456, 4.9607444]
+output  5 is log_bwit in [-3.2042336, 5.568726]
+
