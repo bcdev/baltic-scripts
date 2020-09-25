@@ -636,13 +636,13 @@ def final_setup_BalticProduct(product, baltic__product_path, sensor, spectral_di
         data = spectral_dict[key].get('data')
         if not data is None:
             nbands_key = data.shape[-1]
-            if outputProductFormat == 'BEAM-DIMAP':
-                if sensor == 'OLCI':
-                    bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
-                elif sensor == 'S2MSI':
-                    bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
-                    bsources.append(product.getBand('B8A'))
-                    [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
+            #if outputProductFormat == 'BEAM-DIMAP':
+            if sensor == 'OLCI':
+                bsources = [product.getBand("Oa%02d_radiance" % (i + 1)) for i in range(nbands)]
+            elif sensor == 'S2MSI':
+                bsources = [product.getBand("B%d" % (i + 1)) for i in range(8)]
+                bsources.append(product.getBand('B8A'))
+                [bsources.append(product.getBand("B%d" % (i + 9))) for i in range(4)]
 
             sourceData = np.ndarray(bandShape,dtype='float32') + np.nan # create unique instance to avoid MemoryError
             for i in range(nbands_key):
@@ -805,10 +805,10 @@ def check_and_constrain_rw(log_rw, NN_IO):
               outputScalar=None, correction='HYGEOS', copyOriginalProduct=False, outputProductFormat="BEAM-DIMAP",
               atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
               runAC=True, NNversion='v1_baltic+', NNIOPversion='c2rcc_20171221'):"""
-def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputSpectral=None,
+def baltic_AC(sourceProduct=None,  sensor='', platform='', subset=None, addName = '', outputSpectral=None,
                   outputScalar=None, correction='HYGEOS', copyOriginalProduct=False,
                   atmosphericAuxDataPath = None, niop=5, add_Idepix_Flags=True, add_L2Flags=False, add_c2rccIOPs=False,
-                  runAC=True, NNversion='v1_baltic+', NNIOPversion='c2rcc_20171221'):
+                  runAC=True, NNversion='baltic+_v1', NNIOPversion='c2rcc_20171221'):
     """
     Main function to run the Baltic+ AC based on forward NN
     correction: 'HYGEOS' or 'IPF' for Rayleigh+glint correction
@@ -1068,7 +1068,7 @@ def baltic_AC(sourceProduct=None,  sensor='', subset=None, addName = '', outputS
     #        scalar_dict holds the scalar fields
     ###
     print("Write output")
-    baltic__product_path = os.path.join(outpath,'baltic_' + filename)
+    #baltic__product_path = os.path.join(outpath,'baltic_' + filename)
     if outputSpectral:
         spectral_dict = {}
         for field in outputSpectral.keys():

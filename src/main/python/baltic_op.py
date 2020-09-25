@@ -77,13 +77,7 @@ class BalticOp:
         }
         self.format = operator.getParameter('format')
         self.outputPath = operator.getParameter('outputPath')
-        targetProduct = baltic_AC(sourceProduct=sourceProduct, sensor='OLCI',
-                                  addName='_fwNNHL_50x40x40Noise_',
-                                  NNversion='TF_n',
-                  outputSpectral=outputSpectral, outputScalar=outputScalar, niop=5,
-                  add_Idepix_Flags=True,
-                  correction='HYGEOS',
-                  add_c2rccIOPs=False)
+        targetProduct = baltic_AC(sourceProduct=sourceProduct, sensor='OLCI',platform='S3A',outputScalar=outputScalar,outputSpectral=outputSpectral)
 
 
         File = jpy.get_type('java.io.File')
