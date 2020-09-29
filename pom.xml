@@ -21,7 +21,7 @@
 
     <groupId>org.esa.snap</groupId>
     <artifactId>snap-baltic</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.2</version>
 
     <name>SNAP Baltic+ Atmospheric Correction (Python)</name>
     <packaging>nbm</packaging>
