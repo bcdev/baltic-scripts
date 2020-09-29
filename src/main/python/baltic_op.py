@@ -26,6 +26,9 @@ class BalticOp:
         self.format = "BEAM-DIMAP"
         self.outputPath = None
         self.useIdepix = False
+        self.NNIOPversion = ""
+        self.NNversion = ""
+        self.atmosphericAuxDataPath = ""
         pass
 
     def initialize(self, operator):
@@ -95,9 +98,14 @@ class BalticOp:
         self.format = operator.getParameter('format')
         self.outputPath = operator.getParameter('outputPath')
         self.useIdepix = operator.getParameter('useIdepix')
+        self.NNIOPversion = operator.getParameter('NNIOPversion')
+        self.NNversion = operator.getParameter('NNversion')
+        self.atmosphericAuxDataPath = operator.getParameter('amposphericAuxDataPath')
 
         targetProduct = baltic_AC(sourceProduct=self.sourceProduct, sensor=sensor, platform=platformSentinel, outputScalar=outputScalar,
-                                  outputSpectral=outputSpectral, add_Idepix_Flags=self.useIdepix, NNIOPversion='c2rcc_20171221')
+                                  outputSpectral=outputSpectral, add_Idepix_Flags=self.useIdepix,
+                                  NNIOPversion=self.NNIOPversion, NNversion=self.NNversion,
+                                  atmosphericAuxDataPath=self.atmosphericAuxDataPath)
 
         File = jpy.get_type('java.io.File')
         GPF.writeProduct(targetProduct, File(self.outputPath), self.format, False, ProgressMonitor.NULL)
