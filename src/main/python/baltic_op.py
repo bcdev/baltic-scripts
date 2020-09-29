@@ -25,6 +25,7 @@ class BalticOp:
         self.targetProduct = None
         self.format = "BEAM-DIMAP"
         self.outputPath = None
+        self.useIdepix = False
         pass
 
     def initialize(self, operator):
@@ -46,24 +47,31 @@ class BalticOp:
         print('sys.version_info(): ' + str(sys.version_info) + '\n')
 
         # get  source product:
-        sourceProduct = operator.getSourceProduct('sourceProduct')
+        self.sourceProduct = operator.getSourceProduct('sourceProduct')
 
-        if not sourceProduct:
+        if not self.sourceProduct:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
-        if 'S3A_OL' not in sourceProduct.getName():
+        if 'S3A_OL' not in self.sourceProduct.getName():
             raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
 
         #######
-        f.write("Start initialize: source product is " + sourceProduct.getName() + '\n')
-        print('Start initialize: source product is ' + sourceProduct.getName() + '\n')
+        f.write("Start initialize: source product is " + self.sourceProduct.getName() + '\n')
+        print('Start initialize: source product is ' + self.sourceProduct.getName() + '\n')
 
 
-        width = sourceProduct.getSceneRasterWidth()
-        height = sourceProduct.getSceneRasterHeight()
+        width = self.sourceProduct.getSceneRasterWidth()
+        height = self.sourceProduct.getSceneRasterHeight()
         f.write('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         print('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         #######
         sensor = "OLCI"
+        platform = ""
+        if 'S3A_OL' in self.sourceProduct.getName():
+            platform = "S3A"
+        elif 'S3B_OL' in self.sourceProduct.getName():
+            platform = "S3B"
+        else:
+            raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
         outputSpectral = {'rho_toa': 'rho_toa',
                           'rho_w': 'rho_w',
                           'rho_wmod': 'rho_wmod',
@@ -77,13 +85,12 @@ class BalticOp:
         }
         self.format = operator.getParameter('format')
         self.outputPath = operator.getParameter('outputPath')
-        targetProduct = baltic_AC(sourceProduct=sourceProduct, sensor='OLCI',platform='S3A',outputScalar=outputScalar,outputSpectral=outputSpectral)
+        self.useIdepix = operator.getParameter('useIdepix')
 
+    targetProduct = baltic_AC(sourceProduct=self.sourceProduct, sensor='OLCI', platform=platform, outputScalar=outputScalar, outputSpectral=outputSpectral, add_Idepix_Flags=self.useIdepix)
 
         File = jpy.get_type('java.io.File')
         GPF.writeProduct(targetProduct, File(self.outputPath), self.format, False, ProgressMonitor.NULL)
-
-
 
         f.write('end initialize.')
         f.close()
@@ -91,7 +98,7 @@ class BalticOp:
 
 
     def doExecute(self, pm):
-        ####### commented for now, since all is done in initialize
+        ####### all is done in initialize
         pass
 
     def dispose(self, operator):
