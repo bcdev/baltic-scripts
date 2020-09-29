@@ -42,10 +42,32 @@
         </parameter>
 
         <parameter>
-            <name>useIdepix</name>
-            <description>If set to true, then Idepix calculation is performed</description>
-            <dataType>Boolean</dataType>
-            <defaultValue>False</defaultValue>
+        <name>useIdepix</name>
+        <description>If set to true, then Idepix calculation is performed</description>
+        <dataType>Boolean</dataType>
+        <defaultValue>False</defaultValue>
         </parameter>
+
+        <parameter>
+            <name>NNIOPversion</name>
+            <description>NNIOPversion</description>
+            <dataType>String</dataType>
+            <defaultValue>c2rcc_20171221</defaultValue>
+        </parameter>
+
+        <parameter>
+            <name>NNversion</name>
+            <description>NNversion</description>
+            <dataType>String</dataType>
+            <defaultValue>baltic+_v1</defaultValue>
+        </parameter>
+
+        <parameter>
+            <name>amposphericAuxDataPath</name>
+            <description>amposphericAuxDataPath</description>
+            <dataType>String</dataType>
+            <defaultValue>None</defaultValue>
+        </parameter>
+
     </parameters>
 </operator>

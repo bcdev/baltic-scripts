@@ -12,7 +12,7 @@ from snappy import jpy
 from snappy import PixelPos
 #from snappy import ProductDataUTC
 #in order to run this, you have to add the following line to your __init__.py in your snappy:
-# ProductDataUTC = jpy.get_type('org.esa.snap.core.datamodel.ProductData$UTC')
+ProductDataUTC = jpy.get_type('org.esa.snap.core.datamodel.ProductData$UTC')
 
 
 Calendar = jpy.get_type('java.util.Calendar')
