@@ -963,7 +963,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
     print( "Read meteo data")
     if sensor == 'OLCI':
         pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False, subset=subset)
-        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False, subset=subset)
+        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False, subset=subset) / 2.1415e-5  # convert kg/m2 to DU
         tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False, subset=subset)
         wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False, subset=subset)
         wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False, subset=subset)

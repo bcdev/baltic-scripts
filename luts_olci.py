@@ -67,7 +67,7 @@ class LUT_PPP(object):
         self.tau_no2_norm = grp.variables['tau_no2_norm'][:]
 
         # O3 parameters
-        self.tau_o3_norm = grp.variables['tau_o3_norm'][:]
+        self.tau_o3_norm = grp.variables['tau_o3_norm'][:] * 2.1415e-5 # Initialy for ozone in kg/m2, convert for ozone in DU
 
         # O2 parameters
         self.p_ref_t_o2 = grp.variables['p_ref_t_o2'][:]

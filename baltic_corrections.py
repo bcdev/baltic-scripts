@@ -22,9 +22,8 @@ def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wav
     air_mass = 1./np.cos(np.radians(sza))+1./np.cos(np.radians(vza))
 
     # Correct for ozone all bands
-    if sensor == 'OLCI':
-        tO3 = np.exp(-adf_ppp.tau_o3_norm*ozone[valid,None]*air_mass[valid,None]) # pix*lambda product
-        rho_ng[valid] /= tO3
+    tO3 = np.exp(-adf_ppp.tau_o3_norm*ozone[valid,None]*air_mass[valid,None]) # pix*lambda product
+    rho_ng[valid] /= tO3
 
     # Correct for O2 at 779 nm only
     if sensor == 'OLCI':
@@ -72,15 +71,14 @@ def gas_correction(rho_toa, valid, latitude, longitude, yday, sza, vza, raa, wav
         rho_ng[valid, i] /= tH2O
 
     # Correct for NO2 at all bands
-    if sensor == 'OLCI':
-        yday = yday[valid]
-        lat = latitude[valid]
-        lon = longitude[valid]
-        x = [yday, lat, lon]
-        axes = [adf_clp.months_no2_clim, adf_clp.lat_no2_clim, adf_clp.lon_no2_clim]
-        U_NO2 = nlinear(x, adf_clp.no2_clim_LUT, axes)
-        tNO2 = np.exp(-adf_ppp.tau_no2_norm*U_NO2[:,None]*air_mass[valid,None])
-        rho_ng[valid] /= tNO2
+    yday = yday[valid]
+    lat = latitude[valid]
+    lon = longitude[valid]
+    x = [yday, lat, lon]
+    axes = [adf_clp.months_no2_clim, adf_clp.lat_no2_clim, adf_clp.lon_no2_clim]
+    U_NO2 = nlinear(x, adf_clp.no2_clim_LUT, axes)
+    tNO2 = np.exp(-adf_ppp.tau_no2_norm*U_NO2[:,None]*air_mass[valid,None])
+    rho_ng[valid] /= tNO2
 
     return rho_ng
 
