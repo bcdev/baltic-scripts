@@ -51,7 +51,8 @@ class BalticOp:
 
         if not self.sourceProduct:
             raise RuntimeError('No source product specified or product not found - cannot continue.')
-        if 'S3A_OL' not in self.sourceProduct.getName():
+        platforms = ['S3A_OL','S3B_OL','S2A','S2B']
+        if not (any(x in self.sourceProduct.getName()  for x  in platforms)):
             raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
 
         #######
@@ -64,12 +65,20 @@ class BalticOp:
         f.write('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         print('Source product width, height = ...' + str(width) + ', ' + str(height) + '\n')
         #######
-        sensor = "OLCI"
-        platform = ""
+        sensor = ""
+        platformSentinel = ""
         if 'S3A_OL' in self.sourceProduct.getName():
-            platform = "S3A"
+            platformSentinel = "S3A"
+            sensor = "OLCI"
         elif 'S3B_OL' in self.sourceProduct.getName():
-            platform = "S3B"
+            platformSentinel = "S3B"
+            sensor = "OLCI"
+        elif 'S2A' in self.sourceProduct.getName():
+            platformSentinel = "S2A"
+            sensor   = "S2MSI"
+        elif 'S2B' in self.sourceProduct.getName():
+            platformSentinel = "S2B"
+            sensor   = "S2MSI"
         else:
             raise RuntimeError('Source product does not seem to be an OLCI L1b product - cannot continue.')
         outputSpectral = {'rho_toa': 'rho_toa',
@@ -87,7 +96,8 @@ class BalticOp:
         self.outputPath = operator.getParameter('outputPath')
         self.useIdepix = operator.getParameter('useIdepix')
 
-    targetProduct = baltic_AC(sourceProduct=self.sourceProduct, sensor='OLCI', platform=platform, outputScalar=outputScalar, outputSpectral=outputSpectral, add_Idepix_Flags=self.useIdepix)
+        targetProduct = baltic_AC(sourceProduct=self.sourceProduct, sensor=sensor, platform=platformSentinel, outputScalar=outputScalar,
+                                  outputSpectral=outputSpectral, add_Idepix_Flags=self.useIdepix, NNIOPversion='c2rcc_20171221')
 
         File = jpy.get_type('java.io.File')
         GPF.writeProduct(targetProduct, File(self.outputPath), self.format, False, ProgressMonitor.NULL)
