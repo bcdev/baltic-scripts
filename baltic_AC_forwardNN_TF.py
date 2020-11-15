@@ -1371,7 +1371,8 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
             # Release some memory
             del xworse, xnew, xc, xr
             del yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r
-            del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
+            if i_expansion.any() or i_contraction.any():
+                del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
             if i_reduction.any():
                 del y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp
 
