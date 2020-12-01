@@ -631,13 +631,15 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
     balticPACProduct.setFileLocation(File(baltic__product_path))
 
-    # ProductUtils.copyGeoCoding(product, balticPACProduct) # replacement by Tonio
-    # PixelSubsetRegion = jpy.get_type('org.esa.snap.core.subset.PixelSubsetRegion')
+    # Copy geocoding
+    ProductUtils.copyGeoCoding(product, balticPACProduct)
+    # replacement by Tonio below does not work, geocoding is on the full image, not subset
+    """# PixelSubsetRegion = jpy.get_type('org.esa.snap.core.subset.PixelSubsetRegion')
     ProductSubsetDef = jpy.get_type('org.esa.snap.core.dataio.ProductSubsetDef')
     # subset_region = PixelSubsetRegion(scol, sline, ecol, eline)
     subset_def = ProductSubsetDef()
     subset_def.setRegion(scol, sline, width, height)
-    product.transferGeoCodingTo(balticPACProduct, subset_def)
+    product.transferGeoCodingTo(balticPACProduct, subset_def)"""
 
     # writer = ProductIO.getProductWriter(outputProductFormat)
     # writer.writeProductNodes(balticPACProduct, baltic__product_path)
