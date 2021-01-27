@@ -631,13 +631,15 @@ def write_BalticP_AC_Product(product, baltic__product_path, sensor, spectral_dic
     balticPACProduct = Product('balticPAC', 'balticPAC', width, height)
     balticPACProduct.setFileLocation(File(baltic__product_path))
 
-    # ProductUtils.copyGeoCoding(product, balticPACProduct) # replacement by Tonio
-    # PixelSubsetRegion = jpy.get_type('org.esa.snap.core.subset.PixelSubsetRegion')
+    # Copy geocoding
+    ProductUtils.copyGeoCoding(product, balticPACProduct)
+    # replacement by Tonio below does not work, geocoding is on the full image, not subset
+    """# PixelSubsetRegion = jpy.get_type('org.esa.snap.core.subset.PixelSubsetRegion')
     ProductSubsetDef = jpy.get_type('org.esa.snap.core.dataio.ProductSubsetDef')
     # subset_region = PixelSubsetRegion(scol, sline, ecol, eline)
     subset_def = ProductSubsetDef()
     subset_def.setRegion(scol, sline, width, height)
-    product.transferGeoCodingTo(balticPACProduct, subset_def)
+    product.transferGeoCodingTo(balticPACProduct, subset_def)"""
 
     # writer = ProductIO.getProductWriter(outputProductFormat)
     # writer.writeProductNodes(balticPACProduct, baltic__product_path)
@@ -963,7 +965,7 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
     print( "Read meteo data")
     if sensor == 'OLCI':
         pressure = get_band_or_tiePointGrid(product, 'sea_level_pressure', reshape=False, subset=subset)
-        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False, subset=subset)
+        ozone = get_band_or_tiePointGrid(product, 'total_ozone', reshape=False, subset=subset) / 2.1415e-5  # convert kg/m2 to DU
         tcwv = get_band_or_tiePointGrid(product, 'total_columnar_water_vapour', reshape=False, subset=subset)
         wind_u = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_1', reshape=False, subset=subset)
         wind_v = get_band_or_tiePointGrid(product, 'horizontal_wind_vector_2', reshape=False, subset=subset)
@@ -1371,7 +1373,8 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
             # Release some memory
             del xworse, xnew, xc, xr
             del yr, rho_w_r, rho_wmod_r, rho_ag_r, rho_ag_mod_r
-            del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
+            if i_expansion.any() or i_contraction.any():
+                del ynew, rho_w_new, rho_wmod_new, rho_ag_new, rho_ag_mod_new
             if i_reduction.any():
                 del y, rho_w_tmp, rho_wmod_tmp, rho_ag_tmp, rho_ag_mod_tmp
 
