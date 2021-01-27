@@ -12,11 +12,9 @@ sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
 import snappy as snp
 from snappy import jpy
 from snappy import PixelPos
-from snappy import ProductDataUTC
+# from snappy import ProductDataUTC
 #in order to run this, you have to add the following line to your __init__.py in your snappy:
-# ProductDataUTC = jpy.get_type('org.esa.snap.core.datamodel.ProductData$UTC')
-
-
+ProductDataUTC = jpy.get_type('org.esa.snap.core.datamodel.ProductData$UTC')
 Calendar = jpy.get_type('java.util.Calendar')
 AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
 File = jpy.get_type('java.io.File')
@@ -93,10 +91,11 @@ def findProductCornerInAuxData(product):
         pixelPos = PixelPos(x + 0.5, y + 0.5)
         geoPos = product.getSceneGeoCoding().getGeoPos(pixelPos, None)
         cornerLat.append(geoPos.getLat() + 90.)  # only positive indeces!
-        if geoPos.getLon() < 0:
-            cornerLon.append(360 - geoPos.getLon())
-        else:
-            cornerLon.append(geoPos.getLon())
+        cornerLon.append(geoPos.getLon() + 180.)  # only positive indeces!
+        # if geoPos.getLon() < 0:
+        #     cornerLon.append(360 - geoPos.getLon())
+        # else:
+        #     cornerLon.append(geoPos.getLon())
 
     minLat = np.min(cornerLat)
     maxLat = np.max(cornerLat)
@@ -120,10 +119,11 @@ def findSinglePositionInAuxData(Lat, Lon):
     cornerLat = []
     cornerLon = []
     cornerLat.append(Lat + 90.)  # only positive indeces!
-    if Lon < 0:
-        cornerLon.append(360 - Lon)
-    else:
-        cornerLon.append(Lon)
+    cornerLon.append(Lon + 180.)  # only positive indeces!
+    # if Lon < 0:
+    #     cornerLon.append(360 - Lon)
+    # else:
+    #     cornerLon.append(Lon)
 
     minLat = np.min(cornerLat)
     maxLat = np.max(cornerLat)
@@ -179,11 +179,19 @@ def setAuxData(product, AuxFullFilePath_dict, singlePosition=False, Lat=None, Lo
     OzoneEndFileValid = os.path.getsize(AuxFullFilePath_dict['ozone'][1]) > 1000
     if OzoneStartFileValid:
         ozoneStartProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][0])
-        ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone_Geophysical_Data', reshape=True)
+        ozoneBandNames = list(ozoneStartProduct.getBandNames())
+        if any(['ozone' in ozoneBandNames]):
+            ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone', reshape=True)
+        elif any(['ozone_Geophysical_Data' in ozoneBandNames]):
+            ozoneStart = get_band_or_tiePointGrid(ozoneStartProduct, 'ozone_Geophysical_Data', reshape=True)
         ozoneStartProduct.closeProductReader()
     if OzoneEndFileValid:
         ozoneEndProduct = snp.ProductIO.readProduct(AuxFullFilePath_dict['ozone'][1])
-        ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone_Geophysical_Data', reshape=True)
+        ozoneBandNames = list(ozoneEndProduct.getBandNames())
+        if any(['ozone' in ozoneBandNames]):
+            ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone', reshape=True)
+        elif any(['ozone_Geophysical_Data' in ozoneBandNames]):
+            ozoneEnd = get_band_or_tiePointGrid(ozoneEndProduct, 'ozone_Geophysical_Data', reshape=True)
         ozoneEndProduct.closeProductReader()
 
     if singlePosition:
@@ -281,8 +289,37 @@ def InterpolationBorderComputer6H(timeMJD):
     EndAncFilePrefix = convertToFileNamePrefix(startFileTimeMJD + 0.25)
     return StartAncFilePrefix, EndAncFilePrefix
 
+
+# overriding requests.Session.rebuild_auth to mantain headers when redirected
+class SessionWithHeaderRedirection(requests.Session):
+    AUTH_HOST = 'urs.earthdata.nasa.gov'
+    def __init__(self, username, password):
+        super().__init__()
+        self.auth = (username, password)
+
+    # Overrides from the library to keep headers when redirected to or from
+    # the NASA auth host.
+    def rebuild_auth(self, prepared_request, response):
+        headers = prepared_request.headers
+        url = prepared_request.url
+        if 'Authorization' in headers:
+            original_parsed = requests.utils.urlparse(response.request.url)
+            redirect_parsed = requests.utils.urlparse(url)
+            if (original_parsed.hostname != redirect_parsed.hostname) and redirect_parsed.hostname != self.AUTH_HOST and original_parsed.hostname != self.AUTH_HOST:
+                del headers['Authorization']
+
+        return
+
+
 def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
-    url = "https://oceandata.sci.gsfc.nasa.gov/cgi/getfile/"
+    # url = "https://oceandata.sci.gsfc.nasa.gov/cgi/getfile/"
+    url = "https://oceandata.sci.gsfc.nasa.gov/ob/getfile/"
+
+    # create session with the user credentials that will be used to authenticate access to the data
+    username = "D_M5"
+    password = "EarthData4U"
+    session = SessionWithHeaderRedirection(username, password)
+
 
     file_ext_list_Dict = {
         'ozone' : ["00_O3_AURAOMI_24h.hdf"],
@@ -307,21 +344,31 @@ def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
         if not os.path.exists(os.path.join(dest_path,outname)):
             try:
                 print("Aux datafile missing, downloading %s"%thisurl)
-                r = requests.get(thisurl, allow_redirects=True)
+
+                # submit the request using the session
+                response = session.get(thisurl, stream=True)
+                print(response.status_code)
+
+                # raise an exception in case of http errors
+                response.raise_for_status()
+
                 # open method to open a file on your system and write the contents
                 with open(os.path.join(dest_path,outname), "wb") as code:
-                    code.write(r.content)
+                    code.write(response.content)
                 code.close()
-            except:
-                print("Error in download, break")
-                break
+            except requests.exceptions.HTTPError as e:
+                # handle any errors here
+                print(e)
+
         else:
             #if 'O3' in file_ext:
             #    print(os.path.getsize(os.path.join(dest_path,outname)))
             if os.path.getsize(os.path.join(dest_path,outname)) < 1000:
                 try:
                     print("Aux datafile too small, downloading %s"%thisurl)
-                    r = requests.get(thisurl, allow_redirects=True)
+                    r = session.get(thisurl, stream=True)
+                    print(r.status_code)
+
                     # open method to open a file on your system and write the contents
                     with open(os.path.join(dest_path,outname), "wb") as code:
                         code.write(r.content)
