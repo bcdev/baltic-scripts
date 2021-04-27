@@ -1427,13 +1427,18 @@ def AC_forward(rho_rc, td, wavelength, sza, oza, nn_raa, valid, niop, Aatm, Aatm
     J = np.zeros((n_pix, nband_chi2, niop))
     for k,ik in enumerate(iband_chi2):
         J[:,k] = np.einsum('...ij,...j->...i', DXinv, Drho_wmod[:,:,ik])
+    # Identify non-singular pixels (J finite and inversible)
+    non_singular_pix = np.all(np.isfinite(J), axis=(1,2))
+    non_singular_pix[non_singular_pix] = np.linalg.matrix_rank(J[non_singular_pix]) == niop
     # Compute d rhorc_mod / d xw
     Matm = np.einsum('...ik,...kj->...ij', Aatm[valid], Aatm_inv[valid])
     TJ = np.einsum('...i,...ij->...ij', td[valid][:, iband_chi2], J)
     id_all = np.tile(np.identity(nband_chi2), (n_pix,1)).reshape(n_pix,nband_chi2,nband_chi2)
     drho_rcmod_dxw =  np.einsum('...ik,...kj->...ij', id_all - Matm[:,iband_chi2,:], TJ)
     # Compute variance-covariance matrix C_xw
-    C_xw = np.linalg.inv(np.matmul(drho_rcmod_dxw.transpose(0,2,1),drho_rcmod_dxw))
+    C_xw_inv = np.matmul(drho_rcmod_dxw.transpose(0,2,1),drho_rcmod_dxw)
+    C_xw = np.zeros((n_pix, niop, niop)) + np.nan
+    C_xw[non_singular_pix] = np.linalg.inv(C_xw_inv[non_singular_pix]) #TODO we could investigate inversion on non-singular dimensions < niop
     C_xw = np.einsum('i,ijk->ijk', chi2[valid], C_xw) # scaling with reduced chi2 for non-weighted minimization
     # Compute d rhow / d xw
     TinvMatm = np.einsum('...i,...ij->...ij', 1./td[valid], Matm)
