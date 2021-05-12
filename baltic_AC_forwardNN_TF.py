@@ -546,7 +546,8 @@ def apply_backwardNN_TF(rhow, sun_zenith, view_zenith, diff_azimuth, valid, NN_I
     """
 
     # Initialise output
-    log_iop = np.zeros((rhow.shape[0], 5)) + np.NaN
+    log_iop = np.zeros((rhow.shape[0], 5))
+    log_iop[:] = NN_IO.outputRange[:,0] # set default values, for invalid NN inversion (rhow<0)
 
     # Initialise input
     rhow_pos = np.all(rhow>0, axis=1) # limit to rhow >0

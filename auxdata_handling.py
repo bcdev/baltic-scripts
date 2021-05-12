@@ -313,7 +313,7 @@ class SessionWithHeaderRedirection(requests.Session):
 
 def check_downloadAuxDataFromArchive(year, doy, rep_path, type):
     # url = "https://oceandata.sci.gsfc.nasa.gov/cgi/getfile/"
-    url = "https://oceandata.sci.gsfc.nasa.gov/ob/getfile/"
+    url = "https://oceandata.sci.gsfc.nasa.gov/ob/getfile"
 
     # create session with the user credentials that will be used to authenticate access to the data
     username = "D_M5"
