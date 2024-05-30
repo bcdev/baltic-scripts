@@ -15,7 +15,8 @@ def main(args=sys.argv[1:]):
     # Define i/o
     current_path = os.path.dirname(__file__)
     inpath = 'E:/Documents/projects/Baltic+/WP3_AC/test_data/AC_Helsinki_test/'
-    outpath = 'E:/Documents/projects/Baltic+/WP3_AC/test_data/AC_Helsinki_test_output/'
+    # outpath = 'E:/Documents/projects/Baltic+/WP3_AC/test_data/AC_Helsinki_test_output/'
+    outpath = 'E:/Documents/projects/Baltic+/WP3_AC/test_data/repeat/'
 
     ###
     # Insitu Helsinki Lighthouse
@@ -32,23 +33,23 @@ def main(args=sys.argv[1:]):
     # Define output fields
     outputSpectral = {
         'rho_toa': 'rho_toa',
-        'rho_ng': 'rho_ng',
-        'rho_gc': 'rho_gc',
-        'rho_r': 'rho_r',
-        'rho_rc': 'rho_rc',
+        # 'rho_ng': 'rho_ng',
+        # 'rho_gc': 'rho_gc',
+        # 'rho_r': 'rho_r',
+        # 'rho_rc': 'rho_rc',
         # 'rho_molgli' : 'rho_molgli', # for HYGEOS Rayleigh correction only
         # 'rho_ag': 'rho_ag',
         # 'rho_ag_mod': 'rho_ag_mod',
         # 'td': 'td',
         #  'tau_r': 'tau_r',
         # 'tau_r_SRF': 'tau_r_SRF',
-        # 'rho_w': 'rho_w',               # AC output
-        # 'rho_wmod': 'rho_wmod',         # AC output
-        # 'rho_wn': 'rho_wn'              # AC output
+        'rho_w': 'rho_w',               # AC output
+        'rho_wmod': 'rho_wmod',         # AC output
+        'rho_wn': 'rho_wn'              # AC output
     }
     outputScalar = {
-        # 'iteration' : 'iterations',
-        # 'chi2_AC': 'chi2_AC'
+        'iteration' : 'iterations',
+        'chi2_AC': 'chi2_AC'
         # 'log_apig': 'log_iop[:,0]',     # AC output
         # 'log_adet': 'log_iop[:,1]',     # AC output
         # 'log_agelb': 'log_iop[:,2]',    # AC output

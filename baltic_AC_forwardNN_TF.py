@@ -15,32 +15,33 @@ import glob
 import tensorflow as tf
 
 # snappy import
-sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
-import snappy as snp
-from snappy import Product
-from snappy import ProductData
-from snappy import ProductDataUTC
-from snappy import ProductIO
-from snappy import ProductUtils
-from snappy import ProgressMonitor
-from snappy import FlagCoding
-from snappy import jpy
-from snappy import GPF
-from snappy import HashMap
+# sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+sys.path.append("F:\Anaconda_envs\py310_keras3\Lib\site-packages\esa_snappy")
+import esa_snappy as snp
+from esa_snappy import Product
+from esa_snappy import ProductData
+# from snappy import ProductDataUTC
+# from snappy import ProductIO
+from esa_snappy import ProductUtils
+from esa_snappy import ProgressMonitor
+from esa_snappy import FlagCoding
+from esa_snappy import jpy
+from esa_snappy import GPF
+from esa_snappy import HashMap
 #from snappy import TimeCoding #org.esa.snap.core.datamodel.TimeCoding
-from snappy import PixelPos #org.esa.snap.core.datamodel.PixelPos
+from esa_snappy import PixelPos #org.esa.snap.core.datamodel.PixelPos
 
 
 #fetchOzone = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons.fetchOzone')
-AtmosphericAuxdata = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdata')
-AtmosphericAuxdataBuilder = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AtmosphericAuxdataBuilder')
-TimeCoding = jpy.get_type('org.esa.snap.core.datamodel.TimeCoding')
-AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
-AncillaryCommons = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncillaryCommons')
-AncRepository = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncRepository')
-File = jpy.get_type('java.io.File')
 
-AncDataFormat = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDataFormat')
+AtmosphericAuxdata = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AtmosphericAuxdata')
+AtmosphericAuxdataBuilder = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AtmosphericAuxdataBuilder')
+TimeCoding = jpy.get_type('org.esa.snap.core.datamodel.TimeCoding')
+AncDownloader = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AncDownloader')
+AncillaryCommons = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AncillaryCommons')
+AncRepository = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AncRepository')
+File = jpy.get_type('java.io.File')
+AncDataFormat = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AncDataFormat')
 Calendar = jpy.get_type('java.util.Calendar')
 
 

@@ -5,7 +5,7 @@
 Reader for OLCI ADFs
 """
 
-import netCDF4
+from netCDF4 import Dataset
 import numpy as np
 
 
@@ -22,7 +22,7 @@ class LUT_ACP(object):
         self.bands = bands_sat
 
         grpname = 'glint_whitecaps'
-        nci = netCDF4.Dataset(adffile, 'r')
+        nci = Dataset(adffile, 'r')
         grp = nci.groups[grpname]
         vicarious_gain = {}
         for i, b in enumerate(bands_sat):
@@ -46,7 +46,7 @@ class LUT_PPP(object):
     Read PPP LUT
     '''
     def __init__(self, adffile):
-        nci = netCDF4.Dataset(adffile, 'r')
+        nci = Dataset(adffile, 'r')
         
         bands_sat  = np.array([400,412,443,490,510,560,
                             620,665,674,681,709,754,
@@ -113,7 +113,7 @@ class LUT_CLP():
     Read CLP LUT
     '''
     def __init__(self, adffile):
-        nci = netCDF4.Dataset(adffile, 'r')
+        nci = Dataset(adffile, 'r')
 
         # NO2 climatology
         months_no2_clim = nci.variables['months_no2_clim'][:]

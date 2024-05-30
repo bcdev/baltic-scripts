@@ -8,15 +8,17 @@ from datetime import date
 
 #sys.path.append('/home/cmazeran/.snap/snap-python')
 # sys.path.append("C:\\Users\Dagmar\Anaconda3\envs\py36\Lib\site-packages\snappy")
-sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
-import snappy as snp
-from snappy import jpy
-from snappy import PixelPos
+# sys.path.append("C:\\Users\Dagmar\.snap\snap-python")
+# import snappy as snp
+sys.path.append("F:\Anaconda_envs\py310_keras3\Lib\site-packages\esa_snappy")
+import esa_snappy as snp
+from esa_snappy import jpy
+from esa_snappy import PixelPos
 # from snappy import ProductDataUTC
 #in order to run this, you have to add the following line to your __init__.py in your snappy:
 ProductDataUTC = jpy.get_type('org.esa.snap.core.datamodel.ProductData$UTC')
 Calendar = jpy.get_type('java.util.Calendar')
-AncDownloader = jpy.get_type('org.esa.s3tbx.c2rcc.ancillary.AncDownloader')
+AncDownloader = jpy.get_type('eu.esa.opt.c2rcc.ancillary.AncDownloader')
 File = jpy.get_type('java.io.File')
 
 def recursive_glob(rootdir='.', suffixes=''):
