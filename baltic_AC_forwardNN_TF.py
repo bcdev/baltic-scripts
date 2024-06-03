@@ -381,7 +381,8 @@ def check_valid_pixel_expression_Idepix(product, sensor, subset=None):
         height = eline - sline + 1
         width = ecol - scol + 1
 
-    quality_flags = np.zeros(width * height, dtype='uint32')
+    # quality_flags = np.zeros(width * height, dtype='uint32')
+    quality_flags = np.zeros(width * height, dtype='uint64')
     product.getBand('pixel_classif_flags').readPixels(scol, sline, width, height, quality_flags)
 
     if sensor == 'OLCI':
@@ -422,7 +423,8 @@ def check_valid_pixel_expression_L1(product, sensor, subset=None):
         width = ecol - scol + 1
 
     if sensor == 'OLCI':
-        quality_flags = np.zeros(width * height, dtype='uint32')
+        # quality_flags = np.zeros(width * height, dtype='uint32')
+        quality_flags = np.zeros(width * height, dtype='uint64')
 
         # match-up extractions from Calvalus do not have a 'quality_flags' band
         if product.getBand('quality_flags') is None:
@@ -951,6 +953,11 @@ def baltic_AC(scene_path='', filename='', outpath='', sensor='', platform='', su
     if sensor == 'OLCI':
         # Read per-pixel wavelength
         wavelength = Level1_Reader(product, sensor, 'lambda0', reshape=False, subset=subset)
+        ## if wavelength == -1: spectrum is invald!
+        ID = np.all(wavelength>0., axis=1)
+        valid = np.logical_and(ID, valid)
+        print('total valid 2', np.sum(valid))
+
         # Read latitude, longitude
         latitude = get_band_or_tiePointGrid(product, 'latitude', reshape=False, subset=subset)
         longitude = get_band_or_tiePointGrid(product, 'longitude', reshape=False, subset=subset)
